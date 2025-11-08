@@ -1,4 +1,3 @@
-import './App.css';
 import { useState, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
@@ -7,90 +6,165 @@ const ChessGame = () => {
     const [game, setGame] = useState(new Chess());
     const [moveLog, setMoveLog] = useState([]);
 
-    const getGameStatus = () => {
-        if (game.isGameOver()) {
-            if (game.isCheckmate()) return 'Checkmate!';
-            if (game.isDraw()) return 'Draw!';
-            if (game.isStalemate()) return 'Stalemate!';
-
-            return 'Game Over!';
-        }
-        if (game.inCheck()) return 'Check!';
-
-        return `${game.turn() === 'w' ? 'White' : 'Black'} to move`;
+    // --- NEW FUNCTION: Determines if the piece can be dragged ---
+    const isDraggable = ({ piece }) => {
+        // Only allow dragging if the piece color ('w' or 'b') matches the current turn ('w' or 'b')
+        return piece[0] === game.turn();
     };
+
+// Remove 'game' from the dependency array (i.e., make it [])
+const onDrop = useCallback((sourceSquare, targetSquare) => {
+    let moveResult = null;
+    
+    // Use the functional setter to ensure we get the latest 'game' state (g)
+    setGame(g => {
+        const tempGame = new Chess(g.fen()); // Clone the latest state
+
+        try {
+            const move = tempGame.move({
+                from: sourceSquare,
+                to: targetSquare,
+                promotion: 'q'
+            });
+
+            if (move) {
+                // Only modify moveResult if successful
+                moveResult = move; 
+                return tempGame; // Return the new, modified game state
+            }
+        } catch (error) {
+            // Move was illegal, return the original state
+            return g; 
+        }
+        return g; // If move failed, return the original state
+    });
+
+    // Handle move log update outside of setGame
+    if (moveResult) {
+        // The color that moved is 'w' or 'b', we want to display 'White' or 'Black'
+        const color = moveResult.color === 'w' ? 'White' : 'Black';
+        const moveNotation = `${color}: ${moveResult.san}`;
+        setMoveLog(prev => [...prev, moveNotation]);
+        return true;
+    }
+    
+    return false;
+
+  }, [setMoveLog]); // DEPENDENCY ARRAY is now [setMoveLog] or empty []
 
     const resetGame = () => {
         setGame(new Chess());
         setMoveLog([]);
     };
 
-    const onDrop = useCallback((sourceSquare, targetSquare) => {
-        try {
-            const move = game.move({
-                from: sourceSquare,
-                to: targetSquare, // <--- PRIMARY FIX: Changed 'tp' to 'to'
-                promotion: 'q'
-            });
-
-            if (move) {
-                // Set game with a new Chess instance based on the current FEN
-                setGame(new Chess(game.fen()));
-                // Log the move. Note: game.turn() here is the NEXT turn's color
-                const moveNotation = `${move.color === 'w' ? 'White' : 'Black'}: ${move.san}`;
-                setMoveLog(prev => [...prev, moveNotation]);
-
-                return true;
-            }
-        } catch (error) {
-            console.error(error);
-            return false;
+    const getGameStatus = () => {
+        if (game.isGameOver()) {
+            if (game.isCheckmate()) return "Checkmate!";
+            if (game.isDraw()) return "Draw!";
+            if (game.isStalemate()) return "Stalemate!";
+            return "Game Over!";
         }
+        if (game.inCheck()) return "Check!";
+        return `${game.turn() === 'w' ? 'White' : 'Black'} to move`;
+    };
 
-        // Return false if game.move() returned null (illegal move)
-        return false;
-    }, [game]);
+    // ... (Your style objects remain the same) ...
+
+    const containerStyle = {
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '20px',
+        display: 'flex',
+        gap: '20px',
+        // Note: window.innerWidth check will only run on the first render unless a resize listener is added.
+        flexDirection: window.innerWidth < 768 ? 'column' : 'row' 
+    };
+    
+    // ... (rest of your style objects) ...
+    const boardContainerStyle = {
+      flex: 2,
+      maxWidth: '600px'
+    };
+
+    const moveLogStyle = {
+      flex: 1,
+      border: '1px solid #ccc',
+      borderRadius: '4px',
+      padding: '15px'
+    };
+
+    const moveListStyle = {
+      height: '400px',
+      overflowY: 'auto',
+      border: '1px solid #eee',
+      padding: '10px'
+    };
+
+    const moveItemStyle = {
+      padding: '8px',
+      borderBottom: '1px solid #eee',
+      backgroundColor: '#fff'
+    };
+
+    const buttonStyle = {
+      padding: '8px 16px',
+      backgroundColor: '#2196f3',
+      color: 'white',
+      border: 'none',
+      borderRadius: '4px',
+      cursor: 'pointer',
+      marginTop: '15px'
+    };
+
+    const statusStyle = {
+      fontSize: '20px',
+      marginBottom: '15px',
+      textAlign: 'center',
+      color: game.inCheck() ? '#d32f2f' : '#333'
+    };
+
 
     return (
-        <div className="app">
-            <div className="border">
-                <div className="status">
-                    {getGameStatus()}
-                </div>
-                <Chessboard
+        <div style={containerStyle}>
+            <div style={boardContainerStyle}>
+                <div style={statusStyle}>{getGameStatus()}</div>
+                <Chessboard 
                     position={game.fen()}
                     onPieceDrop={onDrop}
-                    customBorderStyle={{
+                    isDraggablePiece={isDraggable}
+                    customBoardStyle={{
                         borderRadius: '4px',
-                        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.3)'
+                        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.3)',
                     }}
-                    customDarkSquareStyle={{ backgroundColor: "#779549" }} // <-- SECONDARY FIX: Valid hex color
-                    customLightSquareStyle={{ backgroundColor: "#edeed1" }}
+                    customDarkSquareStyle={{ backgroundColor: '#779952' }}
+                    customLightSquareStyle={{ backgroundColor: '#edeed1' }}
                 />
-            </div>
-            <div className="move-log">
-                <h2 style={{ marginBottom: '15px', fontSize: '18px' }}>
-                    Move History
-                </h2>
+                <button 
+                    onClick={resetGame}
+                    style={buttonStyle}
+                    onMouseOver={e => e.target.style.backgroundColor = '#1976d2'}
+                    onMouseOut={e => e.target.style.backgroundColor = '#2196f3'}
+                >
+                    New Game
+                </button>
             </div>
 
-            <div className="move-list">
-                {moveLog.length > 0 ? (
-                    moveLog.map((move, index) => (
-                        <div key={index} className="move-item"> {/* <-- SECONDARY FIX: Changed 'class' to 'className' */}
-                            {`${Math.floor(index / 2) + 1}. ${move}`}
+            <div style={moveLogStyle}>
+                <h2 style={{ marginBottom: '15px', fontSize: '18px' }}>Move History</h2>
+                <div style={moveListStyle}>
+                    {moveLog.length > 0 ? (
+                        moveLog.map((move, index) => (
+                            <div key={index} style={moveItemStyle}>
+                                {`${Math.floor(index / 2) + 1}. ${move}`}
+                            </div>
+                        ))
+                    ) : (
+                        <div style={{ textAlign: 'center', color: '#666', fontStyle: 'italic' }}>
+                            No moves yet
                         </div>
-                    ))
-                ) : (
-                    <div style={{ textAlign: 'center', color: '#666', fontStyle: 'italic' }}>
-                        No moves recorded yet.
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
-
-            <button onClick={resetGame}>
-                Reset Game
-            </button>
         </div>
     );
 };
