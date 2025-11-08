@@ -14,3 +14,6 @@ response = model.generate_content(
     Do not add any other text, explanations, or analysis"""
 )
 print(response.text)
+
+def gemini_move():
+    # Should know the board position, whether 
