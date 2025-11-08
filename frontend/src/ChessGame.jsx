@@ -137,14 +137,13 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
     if (sr === tr && sc === tc) return false;
     if (target && target.color === piece.color) return false;
 
-    // 1. Check basic piece movement rule
     if (!isValidMoveBase(board, sr, sc, tr, tc)) return false;
 
     const dR = Math.abs(tr - sr);
     const dC = Math.abs(tc - sc);
     const pieceType = piece.piece;
 
-    // --- CASTLING VALIDATION FOR WHITE/BLACK ---
+    // --- CASTLING VALIDATION ---
     const isKing = pieceType === 'King';
     const isTwoSquareHorizontal = (Math.abs(sc - tc) === 2 && sr === tr);
     
@@ -155,7 +154,7 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
         if (isKingInCheck(board, turn)) return false; 
 
         // Squares King passes/lands on must not be attacked
-        const passingSquareCol = (sc + tc) / 2; // f1/d1 or f8/d8
+        const passingSquareCol = (sc + tc) / 2;
         
         if (isSquareAttacked(board, sr, passingSquareCol, turn === 'W' ? 'B' : 'W')) return false;
         if (isSquareAttacked(board, tr, tc, turn === 'W' ? 'B' : 'W')) return false;
@@ -168,7 +167,6 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
         const rookPiece = board[backRank][rookCol];
         if (!rookPiece || rookPiece.piece !== 'Rook' || rookPiece.color !== turn) return false;
         
-        // NOTE: This simplified check bypasses 'hasMoved' history.
         return true; 
     }
     // --- END CASTLING VALIDATION ---
@@ -229,7 +227,6 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
     const isCapture = board[tr][tc] !== null; 
     let sanNotation;
     
-    // Lookup table for consistent piece designators
     const PieceDesignators = {
         'Rook': 'R', 'Knight': 'N', 'Bishop': 'B', 'Queen': 'Q', 'King': 'K'
     };
@@ -243,8 +240,7 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
     }
 
     if (pieceType === 'Pawn') {
-        // Pawn capture: lowercase file + 'x' + destination (e.g., exd5)
-        // This format is required for matching against the raw Gemini SAN (dxc4)
+        // Pawn capture: lowercase file + 'x' + destination (e.g., dxc4)
         sanNotation = isCapture 
             ? `${toAlgebraic(sr, sc).charAt(0).toLowerCase()}x${destination}` 
             : destination;
@@ -262,7 +258,7 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
 };
 
 
-// --- SAN Parsing Fix with Castling Logic ---
+// --- SAN Parsing Fix with specific pawn capture handling ---
 
 const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
     // 1. Handle Castling First 
@@ -275,8 +271,7 @@ const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
         return { sr: backRank, sc: 4, tr: backRank, tc: 2 };
     }
     
-    // 2. Normalize received SAN for comparison: strip check/mate, ensure case consistency
-    // NOTE: We keep the 'x' for the generated SAN to distinguish captures from non-captures
+    // 2. Normalize received SAN for comparison: strip check/mate
     const receivedSan = sanMove.replace(/[+#]/g, '');
 
     for (let sr = 0; sr < 8; sr++) {
@@ -289,34 +284,20 @@ const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
                 for (const target of targetMoves) {
                     let moveSan = generateSanFromCoords(board, sr, sc, target.row, target.col);
 
-                    // --- CRITICAL COMPARISON LOGIC ---
+                    // --- ROBUST COMPARISON LOGIC ---
                     
-                    // Option A: Full match (Handles piece moves like Nf3 vs Nf3)
+                    // A. Check for exact match (which works for most piece moves)
                     if (moveSan.toUpperCase() === receivedSan.toUpperCase()) {
                         return { sr, sc, tr: target.row, tc: target.col };
                     }
 
-                    // Option B: Pawn Capture Match (Handles dxc4 vs dxc4)
-                    // Pawn captures are special because they include the starting file.
-                    // If the piece is a Pawn AND the move is a capture, try the case-sensitive match as well
+                    // B. Special check for Pawn Captures (like 'dxc4')
+                    // Pawn captures are the only moves where the starting file is lowercase,
+                    // which throws off the pure uppercase comparison if not careful.
                     if (piece.piece === 'Pawn' && moveSan.includes('x')) {
                         if (moveSan === receivedSan) {
-                           return { sr, sc, tr: target.row, tc: tc };
+                           return { sr, sc, tr: target.row, tc: target.col };
                         }
-                    }
-                    
-                    // We only need Option A if we ensure the generated SAN is always in the format of the Gemini move.
-                    // Since Pawn captures use lowercase file, the full uppercase conversion fails the "dxc4" test.
-                    // We must treat Pawn captures as a special case for string comparison.
-
-                    // Let's refine Option A to handle the file/case sensitivity properly:
-                    
-                    // Standardize the generated SAN: Piece designator (if present) + capture + destination
-                    const standardizedGeneratedSan = moveSan.replace(/[a-h]/g, match => match.toUpperCase());
-                    
-                    // Final attempt at robust comparison:
-                    if (standardizedGeneratedSan.toUpperCase() === receivedSan.toUpperCase()) {
-                        return { sr, sc, tr: target.row, tc: target.col };
                     }
                 }
             }
