@@ -9,7 +9,7 @@ const toAlgebraic = (row, col) => {
     return `${file}${rank}`;
 };
 
-// Piece Definitions and Symbols (unchanged)
+// Piece Definitions and Symbols
 const initialBoard = [
     [{ piece: 'Rook', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Queen', color: 'B' }, { piece: 'King', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Rook', color: 'B' }],
     [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', 'color': 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
@@ -30,7 +30,9 @@ const pieceSymbols = {
     'Pawn': { W: '♟', B: '♙' },
 };
 
-// --- Move Validation Logic (from previous update, used for game state management) ---
+// ----------------------------------------------------------------------
+// --- CORE MOVE VALIDATION & HELPER LOGIC ---
+// ----------------------------------------------------------------------
 
 const checkPathClearance = (board, sr, sc, tr, tc) => {
     const dr = Math.sign(tr - sr);
@@ -61,10 +63,9 @@ const isValidMoveBase = (board, sr, sc, tr, tc) => {
 
     switch (piece.piece) {
         case 'Pawn': {
-            if (dC === 0) {
-                if (rowDiff === direction && !target) return true;
-                if (rowDiff === 2 * direction && sr === (piece.color === 'W' ? 6 : 1) && !target) return true;
-            }
+            const startRow = piece.color === 'W' ? 6 : 1;
+            if (dC === 0 && rowDiff === direction && !target) return true;
+            if (dC === 0 && rowDiff === 2 * direction && sr === startRow && !target) return true;
             if (dC === 1 && rowDiff === direction && target) return true;
             return false;
         }
@@ -72,9 +73,26 @@ const isValidMoveBase = (board, sr, sc, tr, tc) => {
         case 'Bishop': return dR === dC && dR > 0;
         case 'Queen': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0) || (dR === dC && dR > 0);
         case 'Knight': return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
-        case 'King': return dR <= 1 && dC <= 1;
+        case 'King': {
+            if (dR <= 1 && dC <= 1) return true;
+            // Castling base move: King moves 2 squares horizontally on back rank
+            if (dR === 0 && dC === 2 && (sr === 7 || sr === 0)) return true;
+            return false;
+        }
         default: return false;
     }
+};
+
+const findKing = (board, color) => {
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            if (piece && piece.piece === 'King' && piece.color === color) {
+                return { r, c };
+            }
+        }
+    }
+    return null; 
 };
 
 const isSquareAttacked = (board, tr, tc, attackingColor) => {
@@ -97,18 +115,6 @@ const isSquareAttacked = (board, tr, tc, attackingColor) => {
     return false;
 };
 
-const findKing = (board, color) => {
-    for (let r = 0; r < 8; r++) {
-        for (let c = 0; c < 8; c++) {
-            const piece = board[r][c];
-            if (piece && piece.piece === 'King' && piece.color === color) {
-                return { r, c };
-            }
-        }
-    }
-    return null; 
-};
-
 const isKingInCheck = (board, color) => {
     const kingPos = findKing(board, color);
     if (!kingPos) return false;
@@ -127,21 +133,55 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
     const piece = board[sr][sc];
     const target = board[tr][tc];
 
-    if (!piece) return false;
+    if (!piece || piece.color !== turn) return false;
     if (sr === tr && sc === tc) return false;
-    if (piece.color !== turn) return false;
     if (target && target.color === piece.color) return false;
 
+    // 1. Check basic piece movement rule
     if (!isValidMoveBase(board, sr, sc, tr, tc)) return false;
 
     const dR = Math.abs(tr - sr);
     const dC = Math.abs(tc - sc);
     const pieceType = piece.piece;
 
-    if (['Rook', 'Bishop', 'Queen'].includes(pieceType) && (dR > 1 || dC > 1)) {
+    // --- CASTLING VALIDATION FOR WHITE/BLACK ---
+    const isKing = pieceType === 'King';
+    const isTwoSquareHorizontal = (Math.abs(sc - tc) === 2 && sr === tr);
+    
+    if (isKing && isTwoSquareHorizontal) {
+        const backRank = turn === 'W' ? 7 : 0;
+        if (sr !== backRank) return false;
+        
+        if (isKingInCheck(board, turn)) return false; 
+
+        // Squares King passes/lands on must not be attacked
+        const passingSquareCol = (sc + tc) / 2; // f1/d1 or f8/d8
+        
+        if (isSquareAttacked(board, sr, passingSquareCol, turn === 'W' ? 'B' : 'W')) return false;
+        if (isSquareAttacked(board, tr, tc, turn === 'W' ? 'B' : 'W')) return false;
+        
+        // Path clearance check
+        if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
+
+        // Rook check (simplified: check if Rook is on the corner)
+        const rookCol = tc > sc ? 7 : 0; 
+        const rookPiece = board[backRank][rookCol];
+        if (!rookPiece || rookPiece.piece !== 'Rook' || rookPiece.color !== turn) return false;
+        
+        // NOTE: This simplified check bypasses 'hasMoved' history.
+        return true; 
+    }
+    // --- END CASTLING VALIDATION ---
+
+    // 2. Check path clearance for standard long-range moves
+    if (
+        (['Rook', 'Bishop', 'Queen'].includes(pieceType) && (dR > 1 || dC > 1)) || 
+        (pieceType === 'Pawn' && dR === 2)
+    ) {
         if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
     }
-
+    
+    // 3. Check King safety for standard moves
     return doesMoveLeaveKingSafe(board, sr, sc, tr, tc, turn);
 };
 
@@ -172,13 +212,120 @@ const checkGameEnd = (board, turn) => {
             }
         }
     }
-
     if (isKingInCheck(board, turn)) {
         return { isOver: true, result: turn === 'W' ? 'B Wins (Checkmate)' : 'W Wins (Checkmate)' };
     } else {
         return { isOver: true, result: 'Draw (Stalemate)' };
     }
 };
+
+// --- UPDATED SAN Generation (Robust for captures) ---
+const generateSanFromCoords = (board, sr, sc, tr, tc) => {
+    const movingPiece = board[sr][sc];
+    if (!movingPiece) return '';
+
+    const pieceType = movingPiece.piece;
+    const destination = toAlgebraic(tr, tc); 
+    const isCapture = board[tr][tc] !== null; 
+    let sanNotation;
+    
+    // Lookup table for consistent piece designators
+    const PieceDesignators = {
+        'Rook': 'R', 'Knight': 'N', 'Bishop': 'B', 'Queen': 'Q', 'King': 'K'
+    };
+    const pieceDesignator = PieceDesignators[pieceType];
+
+    // Check for castling
+    const isKing = pieceType === 'King';
+    const dC = Math.abs(tc - sc);
+    if (isKing && dC === 2) {
+        return dC === 2 && tc > sc ? 'O-O' : 'O-O-O';
+    }
+
+    if (pieceType === 'Pawn') {
+        // Pawn capture: lowercase file + 'x' + destination (e.g., exd5)
+        // This format is required for matching against the raw Gemini SAN (dxc4)
+        sanNotation = isCapture 
+            ? `${toAlgebraic(sr, sc).charAt(0).toLowerCase()}x${destination}` 
+            : destination;
+    } else {
+        // Piece capture: Piece + 'x' + destination (e.g., Nxd5)
+        sanNotation = `${pieceDesignator}${isCapture ? 'x' : ''}${destination}`;
+    }
+    
+    // Pawn Promotion
+    if (movingPiece.piece === 'Pawn' && (tr === 0 || tr === 7)) {
+        sanNotation += '=Q';
+    }
+
+    return sanNotation;
+};
+
+
+// --- SAN Parsing Fix with Castling Logic ---
+
+const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
+    // 1. Handle Castling First 
+    if (sanMove === 'O-O' || sanMove === '0-0') {
+        const backRank = turn === 'W' ? 7 : 0;
+        return { sr: backRank, sc: 4, tr: backRank, tc: 6 }; 
+    }
+    if (sanMove === 'O-O-O' || sanMove === '0-0-0') {
+        const backRank = turn === 'W' ? 7 : 0;
+        return { sr: backRank, sc: 4, tr: backRank, tc: 2 };
+    }
+    
+    // 2. Normalize received SAN for comparison: strip check/mate, ensure case consistency
+    // NOTE: We keep the 'x' for the generated SAN to distinguish captures from non-captures
+    const receivedSan = sanMove.replace(/[+#]/g, '');
+
+    for (let sr = 0; sr < 8; sr++) {
+        for (let sc = 0; sc < 8; sc++) {
+            const piece = board[sr][sc];
+            if (piece && piece.color === turn) {
+                
+                const targetMoves = getValidMoves(board, sr, sc, turn);
+
+                for (const target of targetMoves) {
+                    let moveSan = generateSanFromCoords(board, sr, sc, target.row, target.col);
+
+                    // --- CRITICAL COMPARISON LOGIC ---
+                    
+                    // Option A: Full match (Handles piece moves like Nf3 vs Nf3)
+                    if (moveSan.toUpperCase() === receivedSan.toUpperCase()) {
+                        return { sr, sc, tr: target.row, tc: target.col };
+                    }
+
+                    // Option B: Pawn Capture Match (Handles dxc4 vs dxc4)
+                    // Pawn captures are special because they include the starting file.
+                    // If the piece is a Pawn AND the move is a capture, try the case-sensitive match as well
+                    if (piece.piece === 'Pawn' && moveSan.includes('x')) {
+                        if (moveSan === receivedSan) {
+                           return { sr, sc, tr: target.row, tc: tc };
+                        }
+                    }
+                    
+                    // We only need Option A if we ensure the generated SAN is always in the format of the Gemini move.
+                    // Since Pawn captures use lowercase file, the full uppercase conversion fails the "dxc4" test.
+                    // We must treat Pawn captures as a special case for string comparison.
+
+                    // Let's refine Option A to handle the file/case sensitivity properly:
+                    
+                    // Standardize the generated SAN: Piece designator (if present) + capture + destination
+                    const standardizedGeneratedSan = moveSan.replace(/[a-h]/g, match => match.toUpperCase());
+                    
+                    // Final attempt at robust comparison:
+                    if (standardizedGeneratedSan.toUpperCase() === receivedSan.toUpperCase()) {
+                        return { sr, sc, tr: target.row, tc: target.col };
+                    }
+                }
+            }
+        }
+    }
+    console.warn(`Could not find coordinates for SAN move: ${sanMove}`);
+    return null; 
+};
+
 
 // ----------------------------------------------------------------------
 // --- Main Component ---
@@ -195,29 +342,101 @@ const ChessGame = () => {
     
     const inCheck = useMemo(() => isKingInCheck(board, turn), [board, turn]);
 
-    // --- UPDATED sendMoveHistory: Now accepts isCheck boolean ---
-    const sendMoveHistory = useCallback((history, isCheck = false) => {
+    // --- sendMoveHistory (Async API call to Flask) ---
+    const sendMoveHistory = useCallback(async (history, isCheck = false) => {
         const apiUrl = 'http://127.0.0.1:5000/api/data'; 
-
-        fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                moveHistory: history,
-                isCheck: isCheck // <-- NEW: Explicit Check status
-            }),
-        })
-        .then(response => {
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ moveHistory: history, isCheck: isCheck }),
+            });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            return response.json();
-        })
-        .then(data => { console.log('Success sending move history:', data); })
-        .catch((error) => { console.error('Error sending move history to backend:', error); });
+            const data = await response.json();
+            return data.geminiMove; 
+        } catch (error) { 
+            console.error('Error sending move history to backend:', error); 
+            return null;
+        }
     }, []); 
 
-    const handleSquareClick = useCallback((r, c) => {
-        if (gameStatus.isOver) return;
+    // --- executeGeminiMove (Handles Black's move execution) ---
+    const executeGeminiMove = useCallback((sanMove) => {
+        if (gameStatus.isOver || !sanMove) return;
 
+        const coords = findMoveCoordinatesFromSAN(board, sanMove, 'B');
+
+        if (!coords) {
+            console.error(`Gemini move "${sanMove}" could not be executed.`);
+            return;
+        }
+
+        const { sr, sc, tr, tc } = coords;
+
+        setBoard(prevBoard => {
+            const newBoard = prevBoard.map(row => [...row]);
+            const movingPiece = newBoard[sr][sc];
+            
+            const pieceToMove = movingPiece ? { ...movingPiece } : null;
+
+            if (!pieceToMove) return prevBoard;
+
+            // --- CASTLING EXECUTION LOGIC (Black) ---
+            const isCastling = (pieceToMove.piece === 'King' && Math.abs(sc - tc) === 2);
+            
+            if (isCastling) {
+                let rookSrcCol, rookDestCol;
+                if (tc === 6) { // Kingside (g8)
+                    rookSrcCol = 7; // h8
+                    rookDestCol = 5; // f8
+                } else if (tc === 2) { // Queenside (c8)
+                    rookSrcCol = 0; // a8
+                    rookDestCol = 3; // d8
+                }
+                if (rookSrcCol !== undefined) {
+                    newBoard[sr][rookDestCol] = newBoard[sr][rookSrcCol];
+                    newBoard[sr][rookSrcCol] = null;
+                }
+            }
+            // --- END CASTLING LOGIC ---
+
+            // Handle promotion
+            if (pieceToMove.piece === 'Pawn' && (tr === 0 || tr === 7)) {
+                pieceToMove.piece = 'Queen';
+            }
+
+            // Execute King's move or standard move
+            newBoard[tr][tc] = pieceToMove;
+            newBoard[sr][sc] = null;
+
+            // Execute Check/Checkmate Logic on the new board
+            const nextTurn = 'W'; 
+            const gameEndResult = checkGameEnd(newBoard, nextTurn);
+            let finalSan = sanMove;
+            
+            if (gameEndResult.isOver) {
+                finalSan = sanMove + (gameEndResult.result.includes('Checkmate') ? '#' : '');
+                setGameStatus(gameEndResult);
+            } else if (isKingInCheck(newBoard, nextTurn)) {
+                finalSan = sanMove + '+';
+            }
+            
+            // Update dependent states
+            setLastMove({ start: {row: sr, col: sc}, end: {row: tr, col: tc}, san: finalSan });
+            setTurn(nextTurn);
+            
+            return newBoard; 
+        });
+
+        setMoveHistory(prevHistory => [...prevHistory, sanMove]);
+
+    }, [findMoveCoordinatesFromSAN, isKingInCheck, checkGameEnd, gameStatus.isOver, board]);
+
+
+    // --- handleSquareClick (Handles White's move and triggers Black's move) ---
+    const handleSquareClick = useCallback(async (r, c) => { 
+        if (gameStatus.isOver || turn !== 'W') return; 
+        
         const piece = board[r][c];
 
         if (selectedSquare) {
@@ -231,52 +450,59 @@ const ChessGame = () => {
             }
 
             if (isMoveValid) {
+                // --- White's Move Execution ---
                 const newBoard = board.map(row => [...row]);
                 const movingPiece = newBoard[selectedSquare.row][selectedSquare.col];
-
-                // 1. Generate Standard Algebraic Notation (SAN)
-                const pieceType = movingPiece.piece;
-                const destination = toAlgebraic(r, c);
-                const isCapture = newBoard[r][c] !== null; 
+                let sanNotation = generateSanFromCoords(board, selectedSquare.row, selectedSquare.col, r, c);
                 
-                let sanNotation;
-                
-                if (pieceType === 'Pawn') {
-                    sanNotation = isCapture ? `${toAlgebraic(selectedSquare.row, selectedSquare.col).charAt(0).toLowerCase()}x${destination}` : destination;
-                } else {
-                    const pieceInitial = pieceType.charAt(0);
-                    const pieceDesignator = pieceType === 'Knight' ? 'N' : pieceInitial;
-                    sanNotation = `${pieceDesignator}${isCapture ? 'x' : ''}${destination}`;
+                // --- CASTLING EXECUTION LOGIC (White) ---
+                const movedPiece = board[selectedSquare.row][selectedSquare.col];
+                const isWhiteCastling = (movedPiece.piece === 'King' && Math.abs(selectedSquare.col - c) === 2);
+    
+                if (isWhiteCastling) {
+                    let rookSrcCol, rookDestCol;
+                    if (c === 6) { // Kingside (g1)
+                        rookSrcCol = 7; // h1
+                        rookDestCol = 5; // f1
+                        sanNotation = 'O-O'; // Set correct SAN
+                    } else if (c === 2) { // Queenside (c1)
+                        rookSrcCol = 0; // a1
+                        rookDestCol = 3; // d1
+                        sanNotation = 'O-O-O'; // Set correct SAN
+                    }
+                    
+                    // Execute Rook move
+                    const rank = selectedSquare.row; 
+                    if (rookSrcCol !== undefined) {
+                        newBoard[rank][rookDestCol] = newBoard[rank][rookSrcCol];
+                        newBoard[rank][rookSrcCol] = null;
+                    }
                 }
+                // --- END CASTLING EXECUTION ---
 
-                // 2. Perform Board Update
+                // Perform King's move or standard piece move and Promotion for White
                 newBoard[r][c] = movingPiece;
                 newBoard[selectedSquare.row][selectedSquare.col] = null;
-
-                // Handle promotion
                 if (movingPiece.piece === 'Pawn' && (r === 0 || r === 7)) {
                     movingPiece.piece = 'Queen';
                     sanNotation += '=Q';
                 }
-
-                // 3. Prepare for Next Turn
-                const nextTurn = turn === 'W' ? 'B' : 'W';
+                
+                const nextTurn = 'B';
                 const newMoveHistory = [...moveHistory, sanNotation];
                 
-                // 4. Check for Check/Checkmate/Stalemate *for the NEXT player*
+                const isNextKingInCheck = isKingInCheck(newBoard, nextTurn);
                 const gameEndResult = checkGameEnd(newBoard, nextTurn);
-                const isNextKingInCheck = isKingInCheck(newBoard, nextTurn); // Check status for next player
-
+                
+                // Add Check/Checkmate Notation to White's SAN
                 if (gameEndResult.isOver) {
-                    // Checkmate or Stalemate
                     sanNotation = gameEndResult.result.includes('Checkmate') ? sanNotation + '#' : sanNotation;
                     setGameStatus(gameEndResult);
                 } else if (isNextKingInCheck) {
-                    // Simple Check
                     sanNotation += '+';
                 }
-                
-                // 5. Update States
+
+                // Update States for White's move
                 setBoard(newBoard);
                 setLastMove({ start: selectedSquare, end: { row: r, col: c }, san: sanNotation });
                 setMoveHistory(newMoveHistory); 
@@ -284,30 +510,38 @@ const ChessGame = () => {
                 setSelectedSquare(null);
                 setValidMoves([]);
                 
-                // *** API CALL: Pass the move history and the explicit check status ***
-                sendMoveHistory(newMoveHistory, isNextKingInCheck); 
-                // ********************************************************************
-
+                // --- ASYNC CALL BACKEND & EXECUTE GEMINI MOVE ---
+                if (nextTurn === 'B' && !gameEndResult.isOver) {
+                    const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck);
+                    
+                    if (geminiMoveSan) {
+                        executeGeminiMove(geminiMoveSan); 
+                    }
+                }
+                
                 return;
             }
 
+            // Deselect or Reselect a White piece
             if (piece && piece.color === turn) {
                 setSelectedSquare({ row: r, col: c });
                 setValidMoves(getValidMoves(board, r, c, turn));
                 return;
             }
-
+            
             setSelectedSquare(null);
             setValidMoves([]);
 
         } else {
+            // Initial selection: Only allow selection of White pieces
             if (piece && piece.color === turn) {
                 setSelectedSquare({ row: r, col: c });
                 setValidMoves(getValidMoves(board, r, c, turn));
             }
         }
-    }, [board, turn, selectedSquare, validMoves, moveHistory, sendMoveHistory, gameStatus.isOver]);
+    }, [board, turn, selectedSquare, validMoves, moveHistory, sendMoveHistory, executeGeminiMove, gameStatus.isOver]);
 
+    // --- Reset and Render Functions ---
     const handleReset = useCallback(() => {
         setBoard(initialBoard.map(row => row.map(cell => cell ? { ...cell } : null)));
         setTurn('W');
@@ -316,15 +550,11 @@ const ChessGame = () => {
         setLastMove(null);
         setMoveHistory([]);
         setGameStatus({ isOver: false, result: 'Game On' });
-        sendMoveHistory([], false); // Send empty history and false check status
+        sendMoveHistory([], false);
     }, [sendMoveHistory]);
 
-    const lastMoveDisplay = useMemo(() => {
-        if (!lastMove) return "—";
-        return `${lastMove.san}`;
-    }, [lastMove]);
-
-
+    const lastMoveDisplay = useMemo(() => { if (!lastMove) return "—"; return `${lastMove.san}`; }, [lastMove]);
+    
     const Square = ({ piece, r, c }) => {
         const isLight = (r + c) % 2 === 0;
         const isSelected = selectedSquare && selectedSquare.row === r && selectedSquare.col === c;
@@ -356,14 +586,8 @@ const ChessGame = () => {
         );
     };
     
-    const renderRanks = () => {
-        return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{8 - i}</div>));
-    };
-
-    const renderFiles = () => {
-        return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{String.fromCharCode(65 + i)}</div>));
-    };
-
+    const renderRanks = () => { return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{8 - i}</div>)); };
+    const renderFiles = () => { return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{String.fromCharCode(65 + i)}</div>)); };
     const renderMoveHistory = () => {
         const moves = [];
         for (let i = 0; i < moveHistory.length; i += 2) {

@@ -19,3 +19,5 @@ def gemini_move(board_state, state, color="black", chess_skill=1000):
     )
 
     print(response.text)
+
+    return response.text
