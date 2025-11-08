@@ -1,5 +1,5 @@
 import os
-import config
+import backend.config as config
 import google.generativeai as genai
 
 genai.configure(api_key=config.GEMINI_KEY)
