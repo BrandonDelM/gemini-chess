@@ -31,7 +31,7 @@ const pieceSymbols = {
 };
 
 // ----------------------------------------------------------------------
-// --- CORE MOVE VALIDATION & HELPER LOGIC (Unchanged from previous fix) ---
+// --- CORE MOVE VALIDATION & HELPER LOGIC ---
 // ----------------------------------------------------------------------
 
 const checkPathClearance = (board, sr, sc, tr, tc) => {
@@ -54,6 +54,7 @@ const isValidMoveBase = (board, sr, sc, tr, tc) => {
     if (sr === tr && sc === tc) return false;
 
     const target = board[tr][tc];
+    // CRITICAL: Block capture of own pieces
     if (target && target.color === piece.color) return false;
 
     const dR = Math.abs(tr - sr);
@@ -64,8 +65,11 @@ const isValidMoveBase = (board, sr, sc, tr, tc) => {
     switch (piece.piece) {
         case 'Pawn': {
             const startRow = piece.color === 'W' ? 6 : 1;
+            // Forward move (no target)
             if (dC === 0 && rowDiff === direction && !target) return true;
+            // Initial two-step move (no target)
             if (dC === 0 && rowDiff === 2 * direction && sr === startRow && !target) return true;
+            // Capture move (must have target)
             if (dC === 1 && rowDiff === direction && target) return true;
             return false;
         }
@@ -212,7 +216,7 @@ const checkGameEnd = (board, turn) => {
     }
 };
 
-// --- UPDATED SAN Generation ---
+// --- SAN Generation ---
 const generateSanFromCoords = (board, sr, sc, tr, tc) => {
     const movingPiece = board[sr][sc];
     if (!movingPiece) return '';
@@ -235,12 +239,10 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
     }
 
     if (pieceType === 'Pawn') {
-        // Pawn capture: lowercase file + 'x' + destination (e.g., exd5)
         sanNotation = isCapture 
             ? `${toAlgebraic(sr, sc).charAt(0).toLowerCase()}x${destination}` 
             : destination;
     } else {
-        // Piece capture: Piece + 'x' + destination (e.g., Nxd5)
         sanNotation = `${pieceDesignator}${isCapture ? 'x' : ''}${destination}`;
     }
     
@@ -253,7 +255,7 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
 };
 
 
-// --- SAN Parsing Fix for Pawn Captures (FINAL FIX) ---
+// --- SAN Parsing Fix for Pawn Captures ---
 
 const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
     // 1. Handle Castling First 
@@ -279,12 +281,12 @@ const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
                 for (const target of targetMoves) {
                     let moveSan = generateSanFromCoords(board, sr, sc, target.row, target.col);
 
+                    // --- ROBUST COMPARISON LOGIC ---
+                    
                     const isPawnCapture = piece.piece === 'Pawn' && moveSan.includes('x');
 
                     if (isPawnCapture) {
-                        // Case 1: Pawn Captures (e.g., cxd5). Must compare exact string values.
-                        // We must normalize the generated SAN to be fully lowercase/uppercase to match Gemini's output
-                        // We'll normalize both to lowercase for this check.
+                        // Case 1: Pawn Captures (e.g., cxd5). Use lowercase comparison.
                         if (moveSan.toLowerCase() === receivedSan.toLowerCase()) {
                            return { sr, sc, tr: target.row, tc: target.col };
                         }
@@ -361,12 +363,12 @@ const ChessGame = () => {
             
             if (isCastling) {
                 let rookSrcCol, rookDestCol;
-                if (tc === 6) { // Kingside (g8)
-                    rookSrcCol = 7; // h8
-                    rookDestCol = 5; // f8
-                } else if (tc === 2) { // Queenside (c8)
-                    rookSrcCol = 0; // a8
-                    rookDestCol = 3; // d8
+                if (tc === 6) { 
+                    rookSrcCol = 7; 
+                    rookDestCol = 5; 
+                } else if (tc === 2) { 
+                    rookSrcCol = 0; 
+                    rookDestCol = 3; 
                 }
                 if (rookSrcCol !== undefined) {
                     newBoard[sr][rookDestCol] = newBoard[sr][rookSrcCol];
