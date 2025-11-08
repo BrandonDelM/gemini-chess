@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import axios from 'axios';
+import './ChessGame.css';
 
 // Helper function to convert zero-indexed column/row to algebraic notation (e.g., [7, 0] -> "A1")
 const toAlgebraic = (row, col) => {
@@ -451,7 +453,7 @@ const ChessGame = () => {
 
     const renderRanks = () => {
         return Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={styleDefinitions.coordinate}>
+            <div key={i} className="coordinate">
                 {8 - i}
             </div>
         ));
@@ -459,13 +461,14 @@ const ChessGame = () => {
 
     const renderFiles = () => {
         return Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={styleDefinitions.coordinate}>
+            <div key={i} className="coordinate">
                 {String.fromCharCode(65 + i)}
             </div>
         ));
     };
 
     const renderMoveHistory = () => {
+        console.log(moveHistory);
         const moves = [];
         for (let i = 0; i < moveHistory.length; i += 2) {
             const moveNumber = Math.floor(i / 2) + 1;
@@ -473,10 +476,10 @@ const ChessGame = () => {
             const blackMove = moveHistory[i + 1] || '...';
             
             moves.push(
-                <div key={i} style={styleDefinitions.historyItem}>
+                <div key={i} className="history-item">
                     <span style={{ color: '#888' }}>{moveNumber}.</span>
-                    <span style={styleDefinitions.historyMove}>{whiteMove}</span>
-                    <span style={styleDefinitions.historyMove}>{blackMove}</span>
+                    <span className="history-move">{whiteMove}</span>
+                    <span className="history-move">{blackMove}</span>
                 </div>
             );
         }
@@ -484,25 +487,24 @@ const ChessGame = () => {
     };
 
     return (
-        <div style={styleDefinitions.container}>
-            <h1 style={styleDefinitions.gameTitle}>Pure React Chess</h1>
-
-            <div style={styleDefinitions.statusPanel}>
-                <div style={{ ...styleDefinitions.statusItemBase, ...styleDefinitions.turnDisplay }}>
+        <div className="container">
+            <h1 className="game-title">Pure React Chess</h1>
+            <div className="status-panel">
+                <div className="status-items turn-W turn-B">
                     Turn: {turn === 'W' ? 'White' : 'Black'}
                 </div>
-                <div style={{ ...styleDefinitions.statusItemBase, ...styleDefinitions.moveDisplay }}>
+                <div className="status-item move-display">
                     Last Move: {lastMoveDisplay}
                 </div>
             </div>
 
-            <div style={styleDefinitions.gameArea}>
-                <div style={styleDefinitions.boardWrapper}>
-                    <div style={{ ...styleDefinitions.coordinateContainerBase, ...styleDefinitions.ranks }}>
+            <div className="game-area">
+                <div className="board-wrapper">
+                    <div className="coordinate-container ranks">
                         {renderRanks()}
                     </div>
 
-                    <div style={styleDefinitions.boardGrid}>
+                    <div className="board-grid">
                         {board.flatMap((row, r) =>
                             row.map((piece, c) => (
                                 <Square key={`${r}-${c}`} piece={piece} r={r} c={c} />
@@ -510,21 +512,21 @@ const ChessGame = () => {
                         )}
                     </div>
 
-                    <div style={{ ...styleDefinitions.coordinateContainerBase, ...styleDefinitions.files }}>
+                    <div className="coordinate-container files">
                         {renderFiles()}
                     </div>
                 </div>
                 
-                <div style={styleDefinitions.historyPanel}>
-                    <h2 style={styleDefinitions.historyTitle}>Move History</h2>
-                    <div style={styleDefinitions.historyList}>
+                <div className="history-panel">
+                    <h2 className="history-title">Move History</h2>
+                    <div className="history-list">
                         {renderMoveHistory()}
                     </div>
                 </div>
 
             </div>
 
-            <button style={styleDefinitions.resetButton} onClick={handleReset}>
+            <button className="reset-button" onClick={handleReset}>
                 Reset Game
             </button>
         </div>
