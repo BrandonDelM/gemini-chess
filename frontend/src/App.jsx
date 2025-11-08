@@ -7,97 +7,83 @@ import { Chess } from 'chess.js';
 
 function App() {
   const [game, setGame] = useState(new Chess());
-  const [winner, setWinner] = useState(null);
-  const [gameOver, setGameOver] = useState(false);
+  const [moveLog, setMoveLog] = useState([]);
 
-  // Let's perform a function on the game state
-  function safeGameMutate(modify) {
-    setGame((g) => {
-      const update = { ...g };
-      modify(update);
-      return update;
-    });
-  }
+  const getGameStatus = () => {
+    if (game.isGameOver()) {
+      if (game.isCheckmate()) return 'Checkmate!'
+      if (game.isDraw()) return 'Draw!'
+      if (game.isStalemate()) return 'Stalemate!'
 
-  // Movement of computer
-  function makeRandomMove() {
-    const possibleMove = game.moves();
-
-    // exit if the game is over
-    if (game.game_over() || game.in_draw() || possibleMove.length === 0) {
-      setGameOver(true);
-      const winner = game.turn() === 'w' ? 'Black' : 'White';
-      setWinner(winner);
-      return;
+      return 'Game Over!'
     }
+    if (game.inCheck()) return 'Check!'
 
-    // select random move
-    const randomIndex = Math.floor(Math.random() * possibleMove.length);
-    // play random move
-    safeGameMutate((game) => {
-      game.move(possibleMove[randomIndex]);
-    });
+    return `${game.turn()} === 'w' ? 'White' : 'Black'} to move`
   }
 
-  // Perform an action when a piece is dropped by a user
-  function onDrop(source, target) {
-    if (gameOver) return false;
-
-    let move = null;
-    safeGameMutate((game) => {
-      move = game.move({
-        from: source,
-        to: target,
-        promotion: 'q',
-      });
-    });
-    // illegal move
-    if (move === null) return false;
-    // valid move
-    setTimeout(makeRandomMove, 200);
-    return true;
-  }
-
-  // Reset the game
-  function restartGame() {
+  const resetGame = () => {
     setGame(new Chess());
-    setGameOver(false);
-    setWinner(null);
+    setMoveLog([]);
   }
 
-  // Listen for Enter key press to restart the game
-  useEffect(() => {
-    function handleKeyPress(event) {
-      if (event.key === 'Enter') {
-        restartGame();
+  const onDrop = useCallback((sourceSquare, targetSquare) => {
+    try {
+      const move = game.move({
+        from: sourceSquare,
+        tp: targetSquare,
+        promotion: 'q'
+      })
+
+      if (move) {
+        setGame(new Chess(game.fen()))
+        const moveNotation = `${game.turn() === 'w' ? 'Black' : 'White'}: ${move.san}`
+        setMoveLog(prev => [...prev, moveNotation])
+
+        return true;
       }
+    } catch(error) {
+      return false;
     }
-    window.addEventListener('keydown', handleKeyPress);
-    return () => {
-      window.removeEventListener('keydown', handleKeyPress);
-    };
-  }, []);
+
+    return true;
+  }, [game])
 
   return (
     <div className="app">
-      <div className="header">
-        <img src=
-"https://media.geeksforgeeks.org/wp-content/cdn-uploads/20210420155809/gfg-new-logo.png" 
-        alt="Game Image" className="game-image" />
-        <div className="game-info">
-          <h1>GeeksforGeeks Chess Game</h1>
+      <div style="border">
+        <div style="status">
+          {getGameStatus()}
         </div>
+        <Chessboard
+          position={game.fen()}
+          onPieceDrop={onDrop}
+          customBorderStyle={"chess-border"}
+          customDarkSquareStyle={{backgroundColor: "#77952"}}
+          customLightSquareStyle={{backgroundColor: "#edeed1"}}
+        />
       </div>
-      <div className="chessboard-container">
-        <Chessboard position={game.fen()} onPieceDrop={onDrop} />
-        {gameOver && (
-          <div className="game-over">
-            <p>Game Over</p>
-            <p>Winner: {winner}</p>
-            <p>Press Enter to restart</p>
+      <div style="move-log">
+        <h2 style={{marginBottom: '15px', fontSize: '18px'}}>
+          Move History
+        </h2>
+      </div>
+
+      <div style="move-list">
+        {moveLog.length > 0 ? (
+          moveLog.map((move, index) => (
+            <div key={index} style={move-item}>
+              {`${Math.floor(index/2) + 1}. ${move}`}
+            </div>
+          ) )
+        ) : (
+          <div style={{textAlign: 'center', color: '#666', fontStyle: 'italic'}}>
+
           </div>
         )}
       </div>
+
+      <button onClick={resetGame()}></button>
     </div>
   );
 }
