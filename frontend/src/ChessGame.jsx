@@ -2,7 +2,8 @@ import React, { useState, useCallback, useMemo } from 'react';
 
 // Helper function to convert zero-indexed column/row to algebraic notation (e.g., [7, 0] -> "A1")
 const toAlgebraic = (row, col) => {
-    if (row === null || col === null) return null;
+    // Ensures row and col are valid before processing
+    if (row === null || col === null || row === undefined || col === undefined) return null;
     const rank = 8 - row; // Rows 7(White) -> 0(Black) map to Ranks 1 -> 8
     const file = String.fromCharCode(65 + col);
     return `${file}${rank}`;
@@ -65,14 +66,12 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
     const piece = board[sr][sc];
     const target = board[tr][tc];
 
-    // Basic Checks
     if (!piece) return false;
     if (sr === tr && sc === tc) return false;
     if (target && target.color === piece.color) return false;
 
     const dR = Math.abs(tr - sr);
     const dC = Math.abs(tc - sc);
-    // Row 7 (White) -> Row 0 (Black) is negative direction for White
     const direction = piece.color === 'W' ? -1 : 1;
     const rowDiff = tr - sr;
 
@@ -80,15 +79,9 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
         case 'Pawn': {
             const startRow = piece.color === 'W' ? 6 : 1;
 
-            // 1-step forward
             if (dC === 0 && rowDiff === direction && !target) return true;
-
-            // 2-step forward from start
             if (dC === 0 && rowDiff === 2 * direction && sr === startRow && !target && checkPathClearance(board, sr, sc, tr, tc)) return true;
-
-            // Diagonal capture
-            if (dC === 1 && rowDiff === direction && target) return true;
-
+            if (dC === 1 && rowDiff === direction && target) return true; // Capture
             return false;
         }
         case 'Rook': {
@@ -113,7 +106,6 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
             return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
         }
         case 'King': {
-            // Simple 1-square move
             return dR <= 1 && dC <= 1;
         }
         default:
@@ -126,7 +118,8 @@ const ChessGame = () => {
     const [turn, setTurn] = useState('W');
     const [selectedSquare, setSelectedSquare] = useState(null); // {row, col}
     const [validMoves, setValidMoves] = useState([]);
-    const [lastMove, setLastMove] = useState(null); // { start: {row, col}, end: {row, col} }
+    const [lastMove, setLastMove] = useState(null); // { start: {row, col}, end: {row, col}, san: string }
+    const [moveHistory, setMoveHistory] = useState([]); // Array of strings (SAN)
 
     const handleSquareClick = useCallback((r, c) => {
         const piece = board[r][c];
@@ -136,7 +129,6 @@ const ChessGame = () => {
             const isDeselect = selectedSquare.row === r && selectedSquare.col === c;
 
             if (isDeselect) {
-                // Deselect the piece
                 setSelectedSquare(null);
                 setValidMoves([]);
                 return;
@@ -147,16 +139,36 @@ const ChessGame = () => {
                 const newBoard = board.map(row => [...row]);
                 const movingPiece = newBoard[selectedSquare.row][selectedSquare.col];
 
+                // 1. Generate Standard Algebraic Notation (SAN)
+                const pieceType = movingPiece.piece;
+                const destination = toAlgebraic(r, c);
+                
+                let sanNotation;
+                if (pieceType === 'Pawn') {
+                    // Pawns omit the piece identifier (e.g., e4)
+                    sanNotation = destination;
+                    // Optional: Add 'x' for capture, but keeping simple:
+                    // if (newBoard[r][c]) { sanNotation = toAlgebraic(selectedSquare.col) + 'x' + destination; } 
+                } else {
+                    // Pieces use initial (N, B, R, Q, K) + destination (e.g., Nc3)
+                    const pieceInitial = pieceType.charAt(0).toUpperCase();
+                    // Fix Knight to be 'N'
+                    sanNotation = pieceType === 'Knight' ? `N${destination}` : `${pieceInitial}${destination}`;
+                }
+
                 // Check for pawn promotion (simplified to Queen)
                 if (movingPiece.piece === 'Pawn' && (r === 0 || r === 7)) {
                     movingPiece.piece = 'Queen';
+                    sanNotation += '=Q'; // Add promotion indicator
                 }
 
+                // 2. Perform Board Update
                 newBoard[r][c] = movingPiece;
                 newBoard[selectedSquare.row][selectedSquare.col] = null;
 
                 setBoard(newBoard);
-                setLastMove({ start: selectedSquare, end: { row: r, col: c } });
+                setLastMove({ start: selectedSquare, end: { row: r, col: c }, san: sanNotation });
+                setMoveHistory(prev => [...prev, sanNotation]);
                 setTurn(turn === 'W' ? 'B' : 'W');
                 setSelectedSquare(null);
                 setValidMoves([]);
@@ -170,7 +182,7 @@ const ChessGame = () => {
                 return;
             }
 
-            // Clicked an invalid move target or an opponent's piece when a piece was selected
+            // Invalid click, deselect
             setSelectedSquare(null);
             setValidMoves([]);
 
@@ -189,24 +201,25 @@ const ChessGame = () => {
         setSelectedSquare(null);
         setValidMoves([]);
         setLastMove(null);
+        setMoveHistory([]);
     }, []);
 
-    const lastMoveNotation = useMemo(() => {
+    const lastMoveDisplay = useMemo(() => {
         if (!lastMove) return "—";
+        // Show detailed move for status panel clarity
         const start = toAlgebraic(lastMove.start.row, lastMove.start.col);
         const end = toAlgebraic(lastMove.end.row, lastMove.end.col);
-        return `${start} → ${end}`;
+        return `${lastMove.san} (${start} → ${end})`;
     }, [lastMove]);
 
     // Inline CSS for the entire component (replacing Tailwind/shadcn)
-    // Styles are defined with specific names to prevent the circular dependency error
     const styleDefinitions = {
         container: {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             padding: '20px',
-            backgroundColor: '#1e1e1e', // Dark background
+            backgroundColor: '#1e1e1e', 
             color: '#f0f0f0',
             minHeight: '100vh',
             fontFamily: 'Arial, sans-serif'
@@ -218,10 +231,21 @@ const ChessGame = () => {
             textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)',
             letterSpacing: '1px'
         },
+        gameArea: {
+            display: 'flex',
+            gap: '30px',
+            width: 'min(90vw, 1000px)',
+            maxWidth: '1000px',
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+        },
         statusPanel: {
             display: 'flex',
             justifyContent: 'space-between',
-            width: 'min(90vw, 600px)',
+            width: '100%',
+            maxWidth: '600px',
             marginBottom: '20px',
             padding: '10px 15px',
             backgroundColor: '#2c2c2c',
@@ -263,6 +287,7 @@ const ChessGame = () => {
             boxShadow: '0 10px 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.8)',
             borderRadius: '8px',
             overflow: 'hidden',
+            flexShrink: 0, 
         },
         boardGrid: {
             gridColumn: '2 / 3',
@@ -272,7 +297,7 @@ const ChessGame = () => {
             gridTemplateRows: 'repeat(8, 1fr)',
             border: '1px solid #444',
         },
-        coordinateContainer: {
+        coordinateContainerBase: {
             display: 'flex',
             justifyContent: 'space-around',
             alignItems: 'center',
@@ -303,23 +328,23 @@ const ChessGame = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            fontSize: 'min(5vw, 40px)', // Responsive piece size
+            fontSize: 'min(5vw, 40px)', 
             cursor: 'pointer',
             userSelect: 'none',
             transition: 'background-color 0.1s ease, box-shadow 0.1s ease',
             position: 'relative',
         },
         lightSquare: {
-            backgroundColor: '#e9ecef', // Very light gray
+            backgroundColor: '#e9ecef', 
             color: '#1a1a1a',
         },
         darkSquare: {
-            backgroundColor: '#495057', // Medium dark gray
+            backgroundColor: '#495057', 
             color: '#f0f0f0',
         },
         pieceBase: {
             fontWeight: 'bold',
-            fontSize: '1.2em', // To make unicode symbols bigger
+            fontSize: '1.2em', 
             lineHeight: '1',
         },
         whitePiece: {
@@ -330,12 +355,11 @@ const ChessGame = () => {
             color: '#1a1a1a',
             textShadow: '1px 1px 2px rgba(255, 255, 255, 0.5)',
         },
-        // Dynamic Highlights
         selected: {
-            boxShadow: 'inset 0 0 0 4px #ffc107', // Gold ring
+            boxShadow: 'inset 0 0 0 4px #ffc107', 
         },
         validMove: {
-            backgroundColor: '#4CAF50', // Green for valid moves
+            backgroundColor: '#4CAF50', 
             boxShadow: 'inset 0 0 8px rgba(0, 0, 0, 0.5)',
             border: '2px solid #2e7d32',
         },
@@ -350,12 +374,46 @@ const ChessGame = () => {
             borderRadius: '5px',
             boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
             transition: 'background-color 0.2s, transform 0.1s',
-        }
+        },
+        historyPanel: {
+            width: '100%',
+            maxWidth: '300px',
+            backgroundColor: '#2c2c2c',
+            border: '1px solid #444',
+            borderRadius: '8px',
+            padding: '10px',
+            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)',
+            minHeight: '400px',
+            flexGrow: 1, 
+            marginTop: '20px', 
+        },
+        historyTitle: {
+            fontSize: '1.2em',
+            fontWeight: 'bold',
+            borderBottom: '1px solid #444',
+            paddingBottom: '5px',
+            marginBottom: '10px',
+            textAlign: 'center',
+            color: '#f8f9fa',
+        },
+        historyList: {
+            maxHeight: '360px', 
+            overflowY: 'auto',
+            paddingRight: '5px',
+        },
+        historyItem: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            padding: '5px 8px',
+            fontSize: '0.9em',
+            borderBottom: '1px dotted #444',
+        },
+        historyMove: {
+            fontFamily: 'monospace',
+            fontWeight: 'bold',
+            color: '#ced4da',
+        },
     };
-    
-    // Combining common styles for coordinates
-    const ranksStyle = { ...styleDefinitions.coordinateContainer, ...styleDefinitions.ranks };
-    const filesStyle = { ...styleDefinitions.coordinateContainer, ...styleDefinitions.files };
 
     const Square = ({ piece, r, c }) => {
         const isLight = (r + c) % 2 === 0;
@@ -372,7 +430,6 @@ const ChessGame = () => {
         } else if (isValid) {
             style = { ...style, ...styleDefinitions.validMove };
             if (!piece) {
-                // Dot indicator for empty squares
                 style.position = 'relative';
             }
         }
@@ -408,6 +465,24 @@ const ChessGame = () => {
         ));
     };
 
+    const renderMoveHistory = () => {
+        const moves = [];
+        for (let i = 0; i < moveHistory.length; i += 2) {
+            const moveNumber = Math.floor(i / 2) + 1;
+            const whiteMove = moveHistory[i];
+            const blackMove = moveHistory[i + 1] || '...';
+            
+            moves.push(
+                <div key={i} style={styleDefinitions.historyItem}>
+                    <span style={{ color: '#888' }}>{moveNumber}.</span>
+                    <span style={styleDefinitions.historyMove}>{whiteMove}</span>
+                    <span style={styleDefinitions.historyMove}>{blackMove}</span>
+                </div>
+            );
+        }
+        return moves;
+    };
+
     return (
         <div style={styleDefinitions.container}>
             <h1 style={styleDefinitions.gameTitle}>Pure React Chess</h1>
@@ -417,29 +492,36 @@ const ChessGame = () => {
                     Turn: {turn === 'W' ? 'White' : 'Black'}
                 </div>
                 <div style={{ ...styleDefinitions.statusItemBase, ...styleDefinitions.moveDisplay }}>
-                    Last Move: {lastMoveNotation}
+                    Last Move: {lastMoveDisplay}
                 </div>
             </div>
 
-            <div style={styleDefinitions.boardWrapper}>
-                {/* Ranks (1-8) */}
-                <div style={ranksStyle}>
-                    {renderRanks()}
+            <div style={styleDefinitions.gameArea}>
+                <div style={styleDefinitions.boardWrapper}>
+                    <div style={{ ...styleDefinitions.coordinateContainerBase, ...styleDefinitions.ranks }}>
+                        {renderRanks()}
+                    </div>
+
+                    <div style={styleDefinitions.boardGrid}>
+                        {board.flatMap((row, r) =>
+                            row.map((piece, c) => (
+                                <Square key={`${r}-${c}`} piece={piece} r={r} c={c} />
+                            ))
+                        )}
+                    </div>
+
+                    <div style={{ ...styleDefinitions.coordinateContainerBase, ...styleDefinitions.files }}>
+                        {renderFiles()}
+                    </div>
+                </div>
+                
+                <div style={styleDefinitions.historyPanel}>
+                    <h2 style={styleDefinitions.historyTitle}>Move History</h2>
+                    <div style={styleDefinitions.historyList}>
+                        {renderMoveHistory()}
+                    </div>
                 </div>
 
-                {/* The Chess Grid */}
-                <div style={styleDefinitions.boardGrid}>
-                    {board.flatMap((row, r) =>
-                        row.map((piece, c) => (
-                            <Square key={`${r}-${c}`} piece={piece} r={r} c={c} />
-                        ))
-                    )}
-                </div>
-
-                {/* Files (A-H) */}
-                <div style={filesStyle}>
-                    {renderFiles()}
-                </div>
             </div>
 
             <button style={styleDefinitions.resetButton} onClick={handleReset}>
