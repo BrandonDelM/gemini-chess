@@ -31,7 +31,7 @@ const pieceSymbols = {
 };
 
 // ----------------------------------------------------------------------
-// --- CORE MOVE VALIDATION & HELPER LOGIC ---
+// --- CORE MOVE VALIDATION & HELPER LOGIC (Unchanged from previous fix) ---
 // ----------------------------------------------------------------------
 
 const checkPathClearance = (board, sr, sc, tr, tc) => {
@@ -75,7 +75,6 @@ const isValidMoveBase = (board, sr, sc, tr, tc) => {
         case 'Knight': return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
         case 'King': {
             if (dR <= 1 && dC <= 1) return true;
-            // Castling base move: King moves 2 squares horizontally on back rank
             if (dR === 0 && dC === 2 && (sr === 7 || sr === 0)) return true;
             return false;
         }
@@ -143,7 +142,7 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
     const dC = Math.abs(tc - sc);
     const pieceType = piece.piece;
 
-    // --- CASTLING VALIDATION ---
+    // Castling Validation
     const isKing = pieceType === 'King';
     const isTwoSquareHorizontal = (Math.abs(sc - tc) === 2 && sr === tr);
     
@@ -153,25 +152,22 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
         
         if (isKingInCheck(board, turn)) return false; 
 
-        // Squares King passes/lands on must not be attacked
         const passingSquareCol = (sc + tc) / 2;
         
         if (isSquareAttacked(board, sr, passingSquareCol, turn === 'W' ? 'B' : 'W')) return false;
         if (isSquareAttacked(board, tr, tc, turn === 'W' ? 'B' : 'W')) return false;
         
-        // Path clearance check
         if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
 
-        // Rook check (simplified: check if Rook is on the corner)
         const rookCol = tc > sc ? 7 : 0; 
         const rookPiece = board[backRank][rookCol];
         if (!rookPiece || rookPiece.piece !== 'Rook' || rookPiece.color !== turn) return false;
         
         return true; 
     }
-    // --- END CASTLING VALIDATION ---
+    // End Castling Validation
 
-    // 2. Check path clearance for standard long-range moves
+    // Path clearance for standard moves
     if (
         (['Rook', 'Bishop', 'Queen'].includes(pieceType) && (dR > 1 || dC > 1)) || 
         (pieceType === 'Pawn' && dR === 2)
@@ -179,7 +175,6 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
         if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
     }
     
-    // 3. Check King safety for standard moves
     return doesMoveLeaveKingSafe(board, sr, sc, tr, tc, turn);
 };
 
@@ -217,7 +212,7 @@ const checkGameEnd = (board, turn) => {
     }
 };
 
-// --- UPDATED SAN Generation (Robust for captures) ---
+// --- UPDATED SAN Generation ---
 const generateSanFromCoords = (board, sr, sc, tr, tc) => {
     const movingPiece = board[sr][sc];
     if (!movingPiece) return '';
@@ -240,7 +235,7 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
     }
 
     if (pieceType === 'Pawn') {
-        // Pawn capture: lowercase file + 'x' + destination (e.g., dxc4)
+        // Pawn capture: lowercase file + 'x' + destination (e.g., exd5)
         sanNotation = isCapture 
             ? `${toAlgebraic(sr, sc).charAt(0).toLowerCase()}x${destination}` 
             : destination;
@@ -258,7 +253,7 @@ const generateSanFromCoords = (board, sr, sc, tr, tc) => {
 };
 
 
-// --- SAN Parsing Fix with specific pawn capture handling ---
+// --- SAN Parsing Fix for Pawn Captures (FINAL FIX) ---
 
 const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
     // 1. Handle Castling First 
@@ -271,7 +266,7 @@ const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
         return { sr: backRank, sc: 4, tr: backRank, tc: 2 };
     }
     
-    // 2. Normalize received SAN for comparison: strip check/mate
+    // 2. Normalize received SAN: strip check/mate
     const receivedSan = sanMove.replace(/[+#]/g, '');
 
     for (let sr = 0; sr < 8; sr++) {
@@ -284,26 +279,25 @@ const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
                 for (const target of targetMoves) {
                     let moveSan = generateSanFromCoords(board, sr, sc, target.row, target.col);
 
-                    // --- ROBUST COMPARISON LOGIC ---
-                    
-                    // A. Check for exact match (which works for most piece moves)
-                    if (moveSan.toUpperCase() === receivedSan.toUpperCase()) {
-                        return { sr, sc, tr: target.row, tc: target.col };
-                    }
+                    const isPawnCapture = piece.piece === 'Pawn' && moveSan.includes('x');
 
-                    // B. Special check for Pawn Captures (like 'dxc4')
-                    // Pawn captures are the only moves where the starting file is lowercase,
-                    // which throws off the pure uppercase comparison if not careful.
-                    if (piece.piece === 'Pawn' && moveSan.includes('x')) {
-                        if (moveSan === receivedSan) {
+                    if (isPawnCapture) {
+                        // Case 1: Pawn Captures (e.g., cxd5). Must compare exact string values.
+                        // We must normalize the generated SAN to be fully lowercase/uppercase to match Gemini's output
+                        // We'll normalize both to lowercase for this check.
+                        if (moveSan.toLowerCase() === receivedSan.toLowerCase()) {
                            return { sr, sc, tr: target.row, tc: target.col };
+                        }
+                    } else {
+                        // Case 2: Standard Moves (Piece moves, Pawn pushes). Compare uppercase versions.
+                        if (moveSan.toUpperCase() === receivedSan.toUpperCase()) {
+                            return { sr, sc, tr: target.row, tc: target.col };
                         }
                     }
                 }
             }
         }
     }
-    console.warn(`Could not find coordinates for SAN move: ${sanMove}`);
     return null; 
 };
 
@@ -343,13 +337,13 @@ const ChessGame = () => {
 
     // --- executeGeminiMove (Handles Black's move execution) ---
     const executeGeminiMove = useCallback((sanMove) => {
-        if (gameStatus.isOver || !sanMove) return;
+        if (gameStatus.isOver || !sanMove) return false;
 
         const coords = findMoveCoordinatesFromSAN(board, sanMove, 'B');
 
         if (!coords) {
             console.error(`Gemini move "${sanMove}" could not be executed.`);
-            return;
+            return false; // Return false on failure
         }
 
         const { sr, sc, tr, tc } = coords;
@@ -362,7 +356,7 @@ const ChessGame = () => {
 
             if (!pieceToMove) return prevBoard;
 
-            // --- CASTLING EXECUTION LOGIC (Black) ---
+            // CASTLING EXECUTION LOGIC (Black)
             const isCastling = (pieceToMove.piece === 'King' && Math.abs(sc - tc) === 2);
             
             if (isCastling) {
@@ -379,7 +373,7 @@ const ChessGame = () => {
                     newBoard[sr][rookSrcCol] = null;
                 }
             }
-            // --- END CASTLING LOGIC ---
+            // END CASTLING LOGIC
 
             // Handle promotion
             if (pieceToMove.piece === 'Pawn' && (tr === 0 || tr === 7)) {
@@ -410,6 +404,7 @@ const ChessGame = () => {
         });
 
         setMoveHistory(prevHistory => [...prevHistory, sanMove]);
+        return true; // Return success
 
     }, [findMoveCoordinatesFromSAN, isKingInCheck, checkGameEnd, gameStatus.isOver, board]);
 
@@ -436,30 +431,29 @@ const ChessGame = () => {
                 const movingPiece = newBoard[selectedSquare.row][selectedSquare.col];
                 let sanNotation = generateSanFromCoords(board, selectedSquare.row, selectedSquare.col, r, c);
                 
-                // --- CASTLING EXECUTION LOGIC (White) ---
+                // CASTLING EXECUTION LOGIC (White)
                 const movedPiece = board[selectedSquare.row][selectedSquare.col];
                 const isWhiteCastling = (movedPiece.piece === 'King' && Math.abs(selectedSquare.col - c) === 2);
     
                 if (isWhiteCastling) {
                     let rookSrcCol, rookDestCol;
-                    if (c === 6) { // Kingside (g1)
-                        rookSrcCol = 7; // h1
-                        rookDestCol = 5; // f1
-                        sanNotation = 'O-O'; // Set correct SAN
-                    } else if (c === 2) { // Queenside (c1)
-                        rookSrcCol = 0; // a1
-                        rookDestCol = 3; // d1
-                        sanNotation = 'O-O-O'; // Set correct SAN
+                    if (c === 6) { 
+                        rookSrcCol = 7; 
+                        rookDestCol = 5; 
+                        sanNotation = 'O-O'; 
+                    } else if (c === 2) { 
+                        rookSrcCol = 0; 
+                        rookDestCol = 3; 
+                        sanNotation = 'O-O-O'; 
                     }
                     
-                    // Execute Rook move
                     const rank = selectedSquare.row; 
                     if (rookSrcCol !== undefined) {
                         newBoard[rank][rookDestCol] = newBoard[rank][rookSrcCol];
                         newBoard[rank][rookSrcCol] = null;
                     }
                 }
-                // --- END CASTLING EXECUTION ---
+                // END CASTLING EXECUTION
 
                 // Perform King's move or standard piece move and Promotion for White
                 newBoard[r][c] = movingPiece;
@@ -491,12 +485,30 @@ const ChessGame = () => {
                 setSelectedSquare(null);
                 setValidMoves([]);
                 
-                // --- ASYNC CALL BACKEND & EXECUTE GEMINI MOVE ---
+                // --- ASYNC AI CALL WITH RETRY LOOP ---
                 if (nextTurn === 'B' && !gameEndResult.isOver) {
-                    const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck);
+                    const MAX_RETRIES = 3;
+                    let moveExecuted = false;
                     
-                    if (geminiMoveSan) {
-                        executeGeminiMove(geminiMoveSan); 
+                    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                        console.log(`Requesting Gemini move (Attempt ${attempt + 1}/${MAX_RETRIES})...`);
+                        const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck);
+                        
+                        if (geminiMoveSan) {
+                            moveExecuted = executeGeminiMove(geminiMoveSan);
+                            if (moveExecuted) {
+                                console.log(`Gemini move ${geminiMoveSan} executed successfully.`);
+                                break; // Exit loop on success
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if (!moveExecuted) {
+                        console.error(`AI failed to execute a legal move after ${MAX_RETRIES} attempts. Player White must move again.`);
+                        setTurn('W'); 
+                        alert("AI failed to find a legal move. It's your turn again!");
                     }
                 }
                 
@@ -522,7 +534,7 @@ const ChessGame = () => {
         }
     }, [board, turn, selectedSquare, validMoves, moveHistory, sendMoveHistory, executeGeminiMove, gameStatus.isOver]);
 
-    // --- Reset and Render Functions ---
+    // --- Render Functions (Unchanged) ---
     const handleReset = useCallback(() => {
         setBoard(initialBoard.map(row => row.map(cell => cell ? { ...cell } : null)));
         setTurn('W');
