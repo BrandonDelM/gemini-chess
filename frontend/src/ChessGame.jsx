@@ -1,18 +1,18 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import './ChessGame.css'; // Import external CSS file
 
 // Helper function to convert zero-indexed column/row to algebraic notation (e.g., [7, 0] -> "A1")
 const toAlgebraic = (row, col) => {
-    // Ensures row and col are valid before processing
     if (row === null || col === null || row === undefined || col === undefined) return null;
     const rank = 8 - row; // Rows 7(White) -> 0(Black) map to Ranks 1 -> 8
     const file = String.fromCharCode(65 + col);
     return `${file}${rank}`;
 };
 
-// Piece Definitions
+// Piece Definitions and Symbols
 const initialBoard = [
     [{ piece: 'Rook', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Queen', color: 'B' }, { piece: 'King', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Rook', color: 'B' }],
-    [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
+    [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', 'color': 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
     [null, null, null, null, null, null, null, null],
     [null, null, null, null, null, null, null, null],
     [null, null, null, null, null, null, null, null],
@@ -21,7 +21,6 @@ const initialBoard = [
     [{ piece: 'Rook', color: 'W' }, { piece: 'Knight', color: 'W' }, { piece: 'Bishop', color: 'W' }, { piece: 'Queen', color: 'W' }, { piece: 'King', color: 'W' }, { piece: 'Bishop', color: 'W' }, { piece: 'Knight', color: 'W' }, { piece: 'Rook', color: 'W' }]
 ];
 
-// Map piece names to unicode characters
 const pieceSymbols = {
     'Rook': { W: '♜', B: '♖' },
     'Knight': { W: '♞', B: '♘' },
@@ -31,7 +30,9 @@ const pieceSymbols = {
     'Pawn': { W: '♟', B: '♙' },
 };
 
-// --- Move Validation Logic (Simplified: no 'check' checking) ---
+// ----------------------------------------------------------------------
+// --- CORE MOVE VALIDATION & HELPER LOGIC ---
+// ----------------------------------------------------------------------
 
 const checkPathClearance = (board, sr, sc, tr, tc) => {
     const dr = Math.sign(tr - sr);
@@ -47,10 +48,141 @@ const checkPathClearance = (board, sr, sc, tr, tc) => {
     return true;
 };
 
-const getValidMoves = (board, sr, sc, turn) => {
+const isValidMoveBase = (board, sr, sc, tr, tc) => {
     const piece = board[sr][sc];
-    if (!piece || piece.color !== turn) return [];
+    if (!piece) return false;
+    if (sr === tr && sc === tc) return false;
 
+    const target = board[tr][tc];
+    // CRITICAL: Block capture of own pieces
+    if (target && target.color === piece.color) return false;
+
+    const dR = Math.abs(tr - sr);
+    const dC = Math.abs(tc - sc);
+    const direction = piece.color === 'W' ? -1 : 1;
+    const rowDiff = tr - sr;
+
+    switch (piece.piece) {
+        case 'Pawn': {
+            const startRow = piece.color === 'W' ? 6 : 1;
+            // Forward move (no target)
+            if (dC === 0 && rowDiff === direction && !target) return true;
+            // Initial two-step move (no target)
+            if (dC === 0 && rowDiff === 2 * direction && sr === startRow && !target) return true;
+            // Capture move (must have target)
+            if (dC === 1 && rowDiff === direction && target) return true;
+            return false;
+        }
+        case 'Rook': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0);
+        case 'Bishop': return dR === dC && dR > 0;
+        case 'Queen': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0) || (dR === dC && dR > 0);
+        case 'Knight': return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
+        case 'King': {
+            if (dR <= 1 && dC <= 1) return true;
+            if (dR === 0 && dC === 2 && (sr === 7 || sr === 0)) return true;
+            return false;
+        }
+        default: return false;
+    }
+};
+
+const findKing = (board, color) => {
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const piece = board[r][c];
+            if (piece && piece.piece === 'King' && piece.color === color) {
+                return { r, c };
+            }
+        }
+    }
+    return null; 
+};
+
+const isSquareAttacked = (board, tr, tc, attackingColor) => {
+    const opponentColor = attackingColor;
+    
+    for (let sr = 0; sr < 8; sr++) {
+        for (let sc = 0; sc < 8; sc++) {
+            const piece = board[sr][sc];
+            if (piece && piece.color === opponentColor) {
+                if (isValidMoveBase(board, sr, sc, tr, tc)) {
+                    const pieceType = piece.piece;
+                    if (['Rook', 'Bishop', 'Queen'].includes(pieceType)) {
+                        if (!checkPathClearance(board, sr, sc, tr, tc)) continue;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+};
+
+const isKingInCheck = (board, color) => {
+    const kingPos = findKing(board, color);
+    if (!kingPos) return false;
+    const opponentColor = color === 'W' ? 'B' : 'W';
+    return isSquareAttacked(board, kingPos.r, kingPos.c, opponentColor);
+};
+
+const doesMoveLeaveKingSafe = (board, sr, sc, tr, tc, turn) => {
+    const newBoard = board.map(row => [...row]);
+    newBoard[tr][tc] = newBoard[sr][sc];
+    newBoard[sr][sc] = null;
+    return !isKingInCheck(newBoard, turn);
+};
+
+const isValidMove = (board, sr, sc, tr, tc, turn) => {
+    const piece = board[sr][sc];
+    const target = board[tr][tc];
+
+    if (!piece || piece.color !== turn) return false;
+    if (sr === tr && sc === tc) return false;
+    if (target && target.color === piece.color) return false;
+
+    if (!isValidMoveBase(board, sr, sc, tr, tc)) return false;
+
+    const dR = Math.abs(tr - sr);
+    const dC = Math.abs(tc - sc);
+    const pieceType = piece.piece;
+
+    // Castling Validation
+    const isKing = pieceType === 'King';
+    const isTwoSquareHorizontal = (Math.abs(sc - tc) === 2 && sr === tr);
+    
+    if (isKing && isTwoSquareHorizontal) {
+        const backRank = turn === 'W' ? 7 : 0;
+        if (sr !== backRank) return false;
+        
+        if (isKingInCheck(board, turn)) return false; 
+
+        const passingSquareCol = (sc + tc) / 2;
+        
+        if (isSquareAttacked(board, sr, passingSquareCol, turn === 'W' ? 'B' : 'W')) return false;
+        if (isSquareAttacked(board, tr, tc, turn === 'W' ? 'B' : 'W')) return false;
+        
+        if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
+
+        const rookCol = tc > sc ? 7 : 0; 
+        const rookPiece = board[backRank][rookCol];
+        if (!rookPiece || rookPiece.piece !== 'Rook' || rookPiece.color !== turn) return false;
+        
+        return true; 
+    }
+    // End Castling Validation
+
+    // Path clearance for standard moves
+    if (
+        (['Rook', 'Bishop', 'Queen'].includes(pieceType) && (dR > 1 || dC > 1)) || 
+        (pieceType === 'Pawn' && dR === 2)
+    ) {
+        if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
+    }
+    
+    return doesMoveLeaveKingSafe(board, sr, sc, tr, tc, turn);
+};
+
+const getValidMoves = (board, sr, sc, turn) => {
     const moves = [];
     for (let tr = 0; tr < 8; tr++) {
         for (let tc = 0; tc < 8; tc++) {
@@ -62,66 +194,227 @@ const getValidMoves = (board, sr, sc, turn) => {
     return moves;
 };
 
-const isValidMove = (board, sr, sc, tr, tc, turn) => {
-    const piece = board[sr][sc];
-    const target = board[tr][tc];
-
-    if (!piece) return false;
-    if (sr === tr && sc === tc) return false;
-    if (target && target.color === piece.color) return false;
-
-    const dR = Math.abs(tr - sr);
-    const dC = Math.abs(tc - sc);
-    const direction = piece.color === 'W' ? -1 : 1;
-    const rowDiff = tr - sr;
-
-    switch (piece.piece) {
-        case 'Pawn': {
-            const startRow = piece.color === 'W' ? 6 : 1;
-
-            if (dC === 0 && rowDiff === direction && !target) return true;
-            if (dC === 0 && rowDiff === 2 * direction && sr === startRow && !target && checkPathClearance(board, sr, sc, tr, tc)) return true;
-            if (dC === 1 && rowDiff === direction && target) return true; // Capture
-            return false;
-        }
-        case 'Rook': {
-            if ((dR === 0 && dC > 0) || (dC === 0 && dR > 0)) {
-                return checkPathClearance(board, sr, sc, tr, tc);
+const checkGameEnd = (board, turn) => {
+    for (let sr = 0; sr < 8; sr++) {
+        for (let sc = 0; sc < 8; sc++) {
+            const piece = board[sr][sc];
+            if (piece && piece.color === turn) {
+                for (let tr = 0; tr < 8; tr++) {
+                    for (let tc = 0; tc < 8; tc++) {
+                        if (isValidMove(board, sr, sc, tr, tc, turn)) {
+                            return { isOver: false, result: null };
+                        }
+                    }
+                }
             }
-            return false;
         }
-        case 'Bishop': {
-            if (dR === dC && dR > 0) {
-                return checkPathClearance(board, sr, sc, tr, tc);
-            }
-            return false;
-        }
-        case 'Queen': {
-            if ((dR === 0 && dC > 0) || (dC === 0 && dR > 0) || (dR === dC && dR > 0)) {
-                return checkPathClearance(board, sr, sc, tr, tc);
-            }
-            return false;
-        }
-        case 'Knight': {
-            return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
-        }
-        case 'King': {
-            return dR <= 1 && dC <= 1;
-        }
-        default:
-            return false;
+    }
+    if (isKingInCheck(board, turn)) {
+        return { isOver: true, result: turn === 'W' ? 'B Wins (Checkmate)' : 'W Wins (Checkmate)' };
+    } else {
+        return { isOver: true, result: 'Draw (Stalemate)' };
     }
 };
+
+// --- SAN Generation ---
+const generateSanFromCoords = (board, sr, sc, tr, tc) => {
+    const movingPiece = board[sr][sc];
+    if (!movingPiece) return '';
+
+    const pieceType = movingPiece.piece;
+    const destination = toAlgebraic(tr, tc); 
+    const isCapture = board[tr][tc] !== null; 
+    let sanNotation;
+    
+    const PieceDesignators = {
+        'Rook': 'R', 'Knight': 'N', 'Bishop': 'B', 'Queen': 'Q', 'King': 'K'
+    };
+    const pieceDesignator = PieceDesignators[pieceType];
+
+    // Check for castling
+    const isKing = pieceType === 'King';
+    const dC = Math.abs(tc - sc);
+    if (isKing && dC === 2) {
+        return dC === 2 && tc > sc ? 'O-O' : 'O-O-O';
+    }
+
+    if (pieceType === 'Pawn') {
+        sanNotation = isCapture 
+            ? `${toAlgebraic(sr, sc).charAt(0).toLowerCase()}x${destination}` 
+            : destination;
+    } else {
+        sanNotation = `${pieceDesignator}${isCapture ? 'x' : ''}${destination}`;
+    }
+    
+    // Pawn Promotion
+    if (movingPiece.piece === 'Pawn' && (tr === 0 || tr === 7)) {
+        sanNotation += '=Q';
+    }
+
+    return sanNotation;
+};
+
+
+// --- SAN Parsing Fix for Pawn Captures ---
+
+const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
+    // 1. Handle Castling First 
+    if (sanMove === 'O-O' || sanMove === '0-0') {
+        const backRank = turn === 'W' ? 7 : 0;
+        return { sr: backRank, sc: 4, tr: backRank, tc: 6 }; 
+    }
+    if (sanMove === 'O-O-O' || sanMove === '0-0-0') {
+        const backRank = turn === 'W' ? 7 : 0;
+        return { sr: backRank, sc: 4, tr: backRank, tc: 2 };
+    }
+    
+    // 2. Normalize received SAN: strip check/mate
+    const receivedSan = sanMove.replace(/[+#]/g, '');
+
+    for (let sr = 0; sr < 8; sr++) {
+        for (let sc = 0; sc < 8; sc++) {
+            const piece = board[sr][sc];
+            if (piece && piece.color === turn) {
+                
+                const targetMoves = getValidMoves(board, sr, sc, turn);
+
+                for (const target of targetMoves) {
+                    let moveSan = generateSanFromCoords(board, sr, sc, target.row, target.col);
+
+                    // --- ROBUST COMPARISON LOGIC ---
+                    
+                    const isPawnCapture = piece.piece === 'Pawn' && moveSan.includes('x');
+
+                    if (isPawnCapture) {
+                        // Case 1: Pawn Captures (e.g., cxd5). Use lowercase comparison.
+                        if (moveSan.toLowerCase() === receivedSan.toLowerCase()) {
+                           return { sr, sc, tr: target.row, tc: target.col };
+                        }
+                    } else {
+                        // Case 2: Standard Moves (Piece moves, Pawn pushes). Compare uppercase versions.
+                        if (moveSan.toUpperCase() === receivedSan.toUpperCase()) {
+                            return { sr, sc, tr: target.row, tc: target.col };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return null; 
+};
+
+
+// ----------------------------------------------------------------------
+// --- Main Component ---
+// ----------------------------------------------------------------------
 
 const ChessGame = () => {
     const [board, setBoard] = useState(initialBoard);
     const [turn, setTurn] = useState('W');
-    const [selectedSquare, setSelectedSquare] = useState(null); // {row, col}
+    const [selectedSquare, setSelectedSquare] = useState(null); 
     const [validMoves, setValidMoves] = useState([]);
-    const [lastMove, setLastMove] = useState(null); // { start: {row, col}, end: {row, col}, san: string }
-    const [moveHistory, setMoveHistory] = useState([]); // Array of strings (SAN)
+    const [lastMove, setLastMove] = useState(null); 
+    const [moveHistory, setMoveHistory] = useState([]); 
+    const [gameStatus, setGameStatus] = useState({ isOver: false, result: 'Game On' });
+    
+    const inCheck = useMemo(() => isKingInCheck(board, turn), [board, turn]);
 
-    const handleSquareClick = useCallback((r, c) => {
+    // --- sendMoveHistory (Async API call to Flask) ---
+    const sendMoveHistory = useCallback(async (history, isCheck = false) => {
+        const apiUrl = 'http://127.0.0.1:5000/api/data'; 
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ moveHistory: history, isCheck: isCheck }),
+            });
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            return data.geminiMove; 
+        } catch (error) { 
+            console.error('Error sending move history to backend:', error); 
+            return null;
+        }
+    }, []); 
+
+    // --- executeGeminiMove (Handles Black's move execution) ---
+    const executeGeminiMove = useCallback((sanMove) => {
+        if (gameStatus.isOver || !sanMove) return false;
+
+        const coords = findMoveCoordinatesFromSAN(board, sanMove, 'B');
+
+        if (!coords) {
+            console.error(`Gemini move "${sanMove}" could not be executed.`);
+            return false; // Return false on failure
+        }
+
+        const { sr, sc, tr, tc } = coords;
+
+        setBoard(prevBoard => {
+            const newBoard = prevBoard.map(row => [...row]);
+            const movingPiece = newBoard[sr][sc];
+            
+            const pieceToMove = movingPiece ? { ...movingPiece } : null;
+
+            if (!pieceToMove) return prevBoard;
+
+            // CASTLING EXECUTION LOGIC (Black)
+            const isCastling = (pieceToMove.piece === 'King' && Math.abs(sc - tc) === 2);
+            
+            if (isCastling) {
+                let rookSrcCol, rookDestCol;
+                if (tc === 6) { 
+                    rookSrcCol = 7; 
+                    rookDestCol = 5; 
+                } else if (tc === 2) { 
+                    rookSrcCol = 0; 
+                    rookDestCol = 3; 
+                }
+                if (rookSrcCol !== undefined) {
+                    newBoard[sr][rookDestCol] = newBoard[sr][rookSrcCol];
+                    newBoard[sr][rookSrcCol] = null;
+                }
+            }
+            // END CASTLING LOGIC
+
+            // Handle promotion
+            if (pieceToMove.piece === 'Pawn' && (tr === 0 || tr === 7)) {
+                pieceToMove.piece = 'Queen';
+            }
+
+            // Execute King's move or standard move
+            newBoard[tr][tc] = pieceToMove;
+            newBoard[sr][sc] = null;
+
+            // Execute Check/Checkmate Logic on the new board
+            const nextTurn = 'W'; 
+            const gameEndResult = checkGameEnd(newBoard, nextTurn);
+            let finalSan = sanMove;
+            
+            if (gameEndResult.isOver) {
+                finalSan = sanMove + (gameEndResult.result.includes('Checkmate') ? '#' : '');
+                setGameStatus(gameEndResult);
+            } else if (isKingInCheck(newBoard, nextTurn)) {
+                finalSan = sanMove + '+';
+            }
+            
+            // Update dependent states
+            setLastMove({ start: {row: sr, col: sc}, end: {row: tr, col: tc}, san: finalSan });
+            setTurn(nextTurn);
+            
+            return newBoard; 
+        });
+
+        setMoveHistory(prevHistory => [...prevHistory, sanMove]);
+        return true; // Return success
+
+    }, [findMoveCoordinatesFromSAN, isKingInCheck, checkGameEnd, gameStatus.isOver, board]);
+
+
+    // --- handleSquareClick (Handles White's move and triggers Black's move) ---
+    const handleSquareClick = useCallback(async (r, c) => { 
+        if (gameStatus.isOver || turn !== 'W') return; 
+        
         const piece = board[r][c];
 
         if (selectedSquare) {
@@ -135,66 +428,115 @@ const ChessGame = () => {
             }
 
             if (isMoveValid) {
-                // Execute the move
+                // --- White's Move Execution ---
                 const newBoard = board.map(row => [...row]);
                 const movingPiece = newBoard[selectedSquare.row][selectedSquare.col];
-
-                // 1. Generate Standard Algebraic Notation (SAN)
-                const pieceType = movingPiece.piece;
-                const destination = toAlgebraic(r, c);
+                let sanNotation = generateSanFromCoords(board, selectedSquare.row, selectedSquare.col, r, c);
                 
-                let sanNotation;
-                if (pieceType === 'Pawn') {
-                    // Pawns omit the piece identifier (e.g., e4)
-                    sanNotation = destination;
-                    // Optional: Add 'x' for capture, but keeping simple:
-                    // if (newBoard[r][c]) { sanNotation = toAlgebraic(selectedSquare.col) + 'x' + destination; } 
-                } else {
-                    // Pieces use initial (N, B, R, Q, K) + destination (e.g., Nc3)
-                    const pieceInitial = pieceType.charAt(0).toUpperCase();
-                    // Fix Knight to be 'N'
-                    sanNotation = pieceType === 'Knight' ? `N${destination}` : `${pieceInitial}${destination}`;
+                // CASTLING EXECUTION LOGIC (White)
+                const movedPiece = board[selectedSquare.row][selectedSquare.col];
+                const isWhiteCastling = (movedPiece.piece === 'King' && Math.abs(selectedSquare.col - c) === 2);
+    
+                if (isWhiteCastling) {
+                    let rookSrcCol, rookDestCol;
+                    if (c === 6) { 
+                        rookSrcCol = 7; 
+                        rookDestCol = 5; 
+                        sanNotation = 'O-O'; 
+                    } else if (c === 2) { 
+                        rookSrcCol = 0; 
+                        rookDestCol = 3; 
+                        sanNotation = 'O-O-O'; 
+                    }
+                    
+                    const rank = selectedSquare.row; 
+                    if (rookSrcCol !== undefined) {
+                        newBoard[rank][rookDestCol] = newBoard[rank][rookSrcCol];
+                        newBoard[rank][rookSrcCol] = null;
+                    }
                 }
+                // END CASTLING EXECUTION
 
-                // Check for pawn promotion (simplified to Queen)
-                if (movingPiece.piece === 'Pawn' && (r === 0 || r === 7)) {
-                    movingPiece.piece = 'Queen';
-                    sanNotation += '=Q'; // Add promotion indicator
-                }
-
-                // 2. Perform Board Update
+                // Perform King's move or standard piece move and Promotion for White
                 newBoard[r][c] = movingPiece;
                 newBoard[selectedSquare.row][selectedSquare.col] = null;
+                if (movingPiece.piece === 'Pawn' && (r === 0 || r === 7)) {
+                    movingPiece.piece = 'Queen';
+                    sanNotation += '=Q';
+                }
+                
+                const nextTurn = 'B';
+                const newMoveHistory = [...moveHistory, sanNotation];
+                
+                const isNextKingInCheck = isKingInCheck(newBoard, nextTurn);
+                const gameEndResult = checkGameEnd(newBoard, nextTurn);
+                
+                // Add Check/Checkmate Notation to White's SAN
+                if (gameEndResult.isOver) {
+                    sanNotation = gameEndResult.result.includes('Checkmate') ? sanNotation + '#' : sanNotation;
+                    setGameStatus(gameEndResult);
+                } else if (isNextKingInCheck) {
+                    sanNotation += '+';
+                }
 
+                // Update States for White's move
                 setBoard(newBoard);
                 setLastMove({ start: selectedSquare, end: { row: r, col: c }, san: sanNotation });
-                setMoveHistory(prev => [...prev, sanNotation]);
-                setTurn(turn === 'W' ? 'B' : 'W');
+                setMoveHistory(newMoveHistory); 
+                setTurn(nextTurn);
                 setSelectedSquare(null);
                 setValidMoves([]);
+                
+                // --- ASYNC AI CALL WITH RETRY LOOP ---
+                if (nextTurn === 'B' && !gameEndResult.isOver) {
+                    const MAX_RETRIES = 3;
+                    let moveExecuted = false;
+                    
+                    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                        console.log(`Requesting Gemini move (Attempt ${attempt + 1}/${MAX_RETRIES})...`);
+                        const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck);
+                        
+                        if (geminiMoveSan) {
+                            moveExecuted = executeGeminiMove(geminiMoveSan);
+                            if (moveExecuted) {
+                                console.log(`Gemini move ${geminiMoveSan} executed successfully.`);
+                                break; // Exit loop on success
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    if (!moveExecuted) {
+                        console.error(`AI failed to execute a legal move after ${MAX_RETRIES} attempts. Player White must move again.`);
+                        setTurn('W'); 
+                        alert("AI failed to find a legal move. It's your turn again!");
+                    }
+                }
+                
                 return;
             }
 
+            // Deselect or Reselect a White piece
             if (piece && piece.color === turn) {
-                // Select a new piece of the current player's color
                 setSelectedSquare({ row: r, col: c });
                 setValidMoves(getValidMoves(board, r, c, turn));
                 return;
             }
-
-            // Invalid click, deselect
+            
             setSelectedSquare(null);
             setValidMoves([]);
 
         } else {
-            // No piece selected: Attempt to select a piece
+            // Initial selection: Only allow selection of White pieces
             if (piece && piece.color === turn) {
                 setSelectedSquare({ row: r, col: c });
                 setValidMoves(getValidMoves(board, r, c, turn));
             }
         }
-    }, [board, turn, selectedSquare, validMoves]);
+    }, [board, turn, selectedSquare, validMoves, moveHistory, sendMoveHistory, executeGeminiMove, gameStatus.isOver]);
 
+    // --- Render Functions (Unchanged) ---
     const handleReset = useCallback(() => {
         setBoard(initialBoard.map(row => row.map(cell => cell ? { ...cell } : null)));
         setTurn('W');
@@ -202,329 +544,105 @@ const ChessGame = () => {
         setValidMoves([]);
         setLastMove(null);
         setMoveHistory([]);
-    }, []);
+        setGameStatus({ isOver: false, result: 'Game On' });
+        sendMoveHistory([], false);
+    }, [sendMoveHistory]);
 
-    const lastMoveDisplay = useMemo(() => {
-        if (!lastMove) return "—";
-        // Show detailed move for status panel clarity
-        const start = toAlgebraic(lastMove.start.row, lastMove.start.col);
-        const end = toAlgebraic(lastMove.end.row, lastMove.end.col);
-        return `${lastMove.san} (${start} → ${end})`;
-    }, [lastMove]);
-
-    // Inline CSS for the entire component (replacing Tailwind/shadcn)
-    const styleDefinitions = {
-        container: {
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            padding: '20px',
-            backgroundColor: '#1e1e1e', 
-            color: '#f0f0f0',
-            minHeight: '100vh',
-            fontFamily: 'Arial, sans-serif'
-        },
-        gameTitle: {
-            fontSize: '2.5em',
-            fontWeight: 'bold',
-            marginBottom: '20px',
-            textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)',
-            letterSpacing: '1px'
-        },
-        gameArea: {
-            display: 'flex',
-            gap: '30px',
-            width: 'min(90vw, 1000px)',
-            maxWidth: '1000px',
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-        },
-        statusPanel: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            width: '100%',
-            maxWidth: '600px',
-            marginBottom: '20px',
-            padding: '10px 15px',
-            backgroundColor: '#2c2c2c',
-            border: '1px solid #444',
-            borderRadius: '8px',
-            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)',
-            gap: '15px',
-        },
-        statusItemBase: {
-            fontSize: '1em',
-            fontWeight: '600',
-            padding: '5px 10px',
-            borderRadius: '4px',
-            textAlign: 'center',
-            flexGrow: 1,
-        },
-        turnDisplay: {
-            color: turn === 'W' ? '#1e1e1e' : '#f0f0f0',
-            backgroundColor: turn === 'W' ? '#f8f9fa' : '#495057',
-            border: `1px solid ${turn === 'W' ? '#ced4da' : '#343a40'}`,
-            boxShadow: `0 2px 4px ${turn === 'W' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.5)'}`,
-            transition: 'background-color 0.3s',
-        },
-        moveDisplay: {
-            color: '#ced4da',
-            fontWeight: 'normal',
-            fontSize: '0.9em',
-            backgroundColor: '#343a40',
-        },
-        boardWrapper: {
-            display: 'grid',
-            gridTemplateColumns: 'auto 1fr',
-            gridTemplateRows: '1fr auto',
-            maxWidth: '600px',
-            maxHeight: '600px',
-            width: '90vw',
-            height: '90vw',
-            margin: '0 auto',
-            boxShadow: '0 10px 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.8)',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            flexShrink: 0, 
-        },
-        boardGrid: {
-            gridColumn: '2 / 3',
-            gridRow: '1 / 2',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(8, 1fr)',
-            gridTemplateRows: 'repeat(8, 1fr)',
-            border: '1px solid #444',
-        },
-        coordinateContainerBase: {
-            display: 'flex',
-            justifyContent: 'space-around',
-            alignItems: 'center',
-            color: '#888',
-            fontSize: '0.8em',
-        },
-        ranks: {
-            gridColumn: '1 / 2',
-            gridRow: '1 / 2',
-            flexDirection: 'column',
-            padding: '0 4px',
-            justifyContent: 'space-around',
-        },
-        files: {
-            gridColumn: '2 / 3',
-            gridRow: '2 / 3',
-            flexDirection: 'row',
-            padding: '4px 0',
-        },
-        coordinate: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-            height: '100%',
-        },
-        squareBase: {
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            fontSize: 'min(5vw, 40px)', 
-            cursor: 'pointer',
-            userSelect: 'none',
-            transition: 'background-color 0.1s ease, box-shadow 0.1s ease',
-            position: 'relative',
-        },
-        lightSquare: {
-            backgroundColor: '#e9ecef', 
-            color: '#1a1a1a',
-        },
-        darkSquare: {
-            backgroundColor: '#495057', 
-            color: '#f0f0f0',
-        },
-        pieceBase: {
-            fontWeight: 'bold',
-            fontSize: '1.2em', 
-            lineHeight: '1',
-        },
-        whitePiece: {
-            color: '#f0f0f0',
-            textShadow: '1px 1px 2px rgba(0, 0, 0, 0.7)',
-        },
-        blackPiece: {
-            color: '#1a1a1a',
-            textShadow: '1px 1px 2px rgba(255, 255, 255, 0.5)',
-        },
-        selected: {
-            boxShadow: 'inset 0 0 0 4px #ffc107', 
-        },
-        validMove: {
-            backgroundColor: '#4CAF50', 
-            boxShadow: 'inset 0 0 8px rgba(0, 0, 0, 0.5)',
-            border: '2px solid #2e7d32',
-        },
-        resetButton: {
-            marginTop: '20px',
-            padding: '10px 20px',
-            fontSize: '1em',
-            cursor: 'pointer',
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '5px',
-            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
-            transition: 'background-color 0.2s, transform 0.1s',
-        },
-        historyPanel: {
-            width: '100%',
-            maxWidth: '300px',
-            backgroundColor: '#2c2c2c',
-            border: '1px solid #444',
-            borderRadius: '8px',
-            padding: '10px',
-            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)',
-            minHeight: '400px',
-            flexGrow: 1, 
-            marginTop: '20px', 
-        },
-        historyTitle: {
-            fontSize: '1.2em',
-            fontWeight: 'bold',
-            borderBottom: '1px solid #444',
-            paddingBottom: '5px',
-            marginBottom: '10px',
-            textAlign: 'center',
-            color: '#f8f9fa',
-        },
-        historyList: {
-            maxHeight: '360px', 
-            overflowY: 'auto',
-            paddingRight: '5px',
-        },
-        historyItem: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            padding: '5px 8px',
-            fontSize: '0.9em',
-            borderBottom: '1px dotted #444',
-        },
-        historyMove: {
-            fontFamily: 'monospace',
-            fontWeight: 'bold',
-            color: '#ced4da',
-        },
-    };
-
+    const lastMoveDisplay = useMemo(() => { if (!lastMove) return "—"; return `${lastMove.san}`; }, [lastMove]);
+    
     const Square = ({ piece, r, c }) => {
         const isLight = (r + c) % 2 === 0;
         const isSelected = selectedSquare && selectedSquare.row === r && selectedSquare.col === c;
         const isValid = validMoves.some(m => m.row === r && m.col === c);
+        const isKing = piece && piece.piece === 'King';
 
-        let style = {
-            ...styleDefinitions.squareBase,
-            ...(isLight ? styleDefinitions.lightSquare : styleDefinitions.darkSquare),
-        };
+        const squareClass = [
+            'square',
+            isLight ? 'light' : 'dark',
+            isSelected ? 'selected' : '',
+            isValid ? 'valid-move' : '',
+            isKing && inCheck && piece.color === turn ? 'king-in-check' : '',
+        ].filter(Boolean).join(' ');
 
-        if (isSelected) {
-            style = { ...style, ...styleDefinitions.selected, backgroundColor: isLight ? '#ffe5a8' : '#cc9a00' };
-        } else if (isValid) {
-            style = { ...style, ...styleDefinitions.validMove };
-            if (!piece) {
-                style.position = 'relative';
-            }
-        }
-
-        const pieceStyle = piece ? { ...styleDefinitions.pieceBase, ...(piece.color === 'W' ? styleDefinitions.whitePiece : styleDefinitions.blackPiece) } : {};
+        const pieceClass = piece 
+            ? ['piece-symbol', piece.color === 'W' ? 'piece-W' : 'piece-B'].join(' ')
+            : '';
 
         return (
-            <div style={style} onClick={() => handleSquareClick(r, c)}>
+            <div className={squareClass} onClick={() => handleSquareClick(r, c)}>
                 {piece ? (
-                    <span style={pieceStyle}>
+                    <span className={pieceClass}>
                         {pieceSymbols[piece.piece][piece.color]}
                     </span>
                 ) : isValid && !piece ? (
-                    <div style={{ position: 'absolute', width: '20%', height: '20%', borderRadius: '50%', backgroundColor: 'rgba(0, 0, 0, 0.2)' }}></div>
+                    <div className="valid-move-dot"></div>
                 ) : null}
             </div>
         );
     };
-
-    const renderRanks = () => {
-        return Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={styleDefinitions.coordinate}>
-                {8 - i}
-            </div>
-        ));
-    };
-
-    const renderFiles = () => {
-        return Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} style={styleDefinitions.coordinate}>
-                {String.fromCharCode(65 + i)}
-            </div>
-        ));
-    };
-
+    
+    const renderRanks = () => { return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{8 - i}</div>)); };
+    const renderFiles = () => { return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{String.fromCharCode(65 + i)}</div>)); };
     const renderMoveHistory = () => {
         const moves = [];
         for (let i = 0; i < moveHistory.length; i += 2) {
             const moveNumber = Math.floor(i / 2) + 1;
             const whiteMove = moveHistory[i];
             const blackMove = moveHistory[i + 1] || '...';
-            
             moves.push(
-                <div key={i} style={styleDefinitions.historyItem}>
-                    <span style={{ color: '#888' }}>{moveNumber}.</span>
-                    <span style={styleDefinitions.historyMove}>{whiteMove}</span>
-                    <span style={styleDefinitions.historyMove}>{blackMove}</span>
+                <div key={i} className="history-item">
+                    <span>{moveNumber}.</span>
+                    <span className="history-move">{whiteMove}</span>
+                    <span className="history-move">{blackMove}</span>
                 </div>
             );
         }
         return moves;
     };
 
-    return (
-        <div style={styleDefinitions.container}>
-            <h1 style={styleDefinitions.gameTitle}>Pure React Chess</h1>
 
-            <div style={styleDefinitions.statusPanel}>
-                <div style={{ ...styleDefinitions.statusItemBase, ...styleDefinitions.turnDisplay }}>
-                    Turn: {turn === 'W' ? 'White' : 'Black'}
+    return (
+        <div className="container">
+            <h1 className="game-title">Pure React Chess</h1>
+
+            <div className="status-panel">
+                <div className={`status-item turn-${turn} ${gameStatus.isOver ? 'game-over' : ''}`}>
+                    {gameStatus.isOver ? 'Game Over!' : `Turn: ${turn === 'W' ? 'White' : 'Black'}`}
                 </div>
-                <div style={{ ...styleDefinitions.statusItemBase, ...styleDefinitions.moveDisplay }}>
+                <div className="status-item result-display">
+                    Result: **{gameStatus.result}**
+                </div>
+                <div className="status-item move-display">
                     Last Move: {lastMoveDisplay}
                 </div>
             </div>
 
-            <div style={styleDefinitions.gameArea}>
-                <div style={styleDefinitions.boardWrapper}>
-                    <div style={{ ...styleDefinitions.coordinateContainerBase, ...styleDefinitions.ranks }}>
+            <div className="game-area">
+                <div className="board-wrapper">
+                    <div className="coordinate-container ranks">
                         {renderRanks()}
                     </div>
-
-                    <div style={styleDefinitions.boardGrid}>
+                    <div className="board-grid">
                         {board.flatMap((row, r) =>
                             row.map((piece, c) => (
                                 <Square key={`${r}-${c}`} piece={piece} r={r} c={c} />
                             ))
                         )}
                     </div>
-
-                    <div style={{ ...styleDefinitions.coordinateContainerBase, ...styleDefinitions.files }}>
+                    <div className="coordinate-container files">
                         {renderFiles()}
                     </div>
                 </div>
                 
-                <div style={styleDefinitions.historyPanel}>
-                    <h2 style={styleDefinitions.historyTitle}>Move History</h2>
-                    <div style={styleDefinitions.historyList}>
+                <div className="history-panel">
+                    <h2 className="history-title">Move History</h2>
+                    <div className="history-list">
                         {renderMoveHistory()}
                     </div>
                 </div>
-
             </div>
 
-            <button style={styleDefinitions.resetButton} onClick={handleReset}>
+            <button className="reset-button" onClick={handleReset}>
                 Reset Game
             </button>
         </div>
