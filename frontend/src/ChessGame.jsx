@@ -12,7 +12,7 @@ const toAlgebraic = (row, col) => {
 // Piece Definitions and Symbols (unchanged)
 const initialBoard = [
     [{ piece: 'Rook', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Queen', color: 'B' }, { piece: 'King', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Rook', color: 'B' }],
-    [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
+    [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', 'color': 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
     [null, null, null, null, null, null, null, null],
     [null, null, null, null, null, null, null, null],
     [null, null, null, null, null, null, null, null],
@@ -30,9 +30,8 @@ const pieceSymbols = {
     'Pawn': { W: '♟', B: '♙' },
 };
 
-// --- Move Validation Logic (Updated with Check/Checkmate/Stalemate) ---
+// --- Move Validation Logic (from previous update, used for game state management) ---
 
-// Path clearance is still needed for pieces moving in straight lines
 const checkPathClearance = (board, sr, sc, tr, tc) => {
     const dr = Math.sign(tr - sr);
     const dc = Math.sign(tc - sc);
@@ -47,7 +46,37 @@ const checkPathClearance = (board, sr, sc, tr, tc) => {
     return true;
 };
 
-// Checks if a square is attacked by the 'attackingColor'
+const isValidMoveBase = (board, sr, sc, tr, tc) => {
+    const piece = board[sr][sc];
+    if (!piece) return false;
+    if (sr === tr && sc === tc) return false;
+
+    const target = board[tr][tc];
+    if (target && target.color === piece.color) return false;
+
+    const dR = Math.abs(tr - sr);
+    const dC = Math.abs(tc - sc);
+    const direction = piece.color === 'W' ? -1 : 1;
+    const rowDiff = tr - sr;
+
+    switch (piece.piece) {
+        case 'Pawn': {
+            if (dC === 0) {
+                if (rowDiff === direction && !target) return true;
+                if (rowDiff === 2 * direction && sr === (piece.color === 'W' ? 6 : 1) && !target) return true;
+            }
+            if (dC === 1 && rowDiff === direction && target) return true;
+            return false;
+        }
+        case 'Rook': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0);
+        case 'Bishop': return dR === dC && dR > 0;
+        case 'Queen': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0) || (dR === dC && dR > 0);
+        case 'Knight': return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
+        case 'King': return dR <= 1 && dC <= 1;
+        default: return false;
+    }
+};
+
 const isSquareAttacked = (board, tr, tc, attackingColor) => {
     const opponentColor = attackingColor;
     
@@ -55,9 +84,7 @@ const isSquareAttacked = (board, tr, tc, attackingColor) => {
         for (let sc = 0; sc < 8; sc++) {
             const piece = board[sr][sc];
             if (piece && piece.color === opponentColor) {
-                // Use a simplified validation function that ignores castling/en passant/pin checks
                 if (isValidMoveBase(board, sr, sc, tr, tc)) {
-                    // Path clearance is crucial for long-range pieces
                     const pieceType = piece.piece;
                     if (['Rook', 'Bishop', 'Queen'].includes(pieceType)) {
                         if (!checkPathClearance(board, sr, sc, tr, tc)) continue;
@@ -70,44 +97,6 @@ const isSquareAttacked = (board, tr, tc, attackingColor) => {
     return false;
 };
 
-// Base move validation logic without checking for king safety or turn/color
-const isValidMoveBase = (board, sr, sc, tr, tc) => {
-    const piece = board[sr][sc];
-    if (!piece) return false;
-    if (sr === tr && sc === tc) return false;
-
-    const target = board[tr][tc];
-    // Check if target square holds a piece of the same color (not allowed for attack checks)
-    if (target && target.color === piece.color) return false;
-
-    const dR = Math.abs(tr - sr);
-    const dC = Math.abs(tc - sc);
-    const direction = piece.color === 'W' ? -1 : 1;
-    const rowDiff = tr - sr;
-
-    switch (piece.piece) {
-        case 'Pawn': {
-            // Standard moves (forward 1 or 2)
-            if (dC === 0) {
-                if (rowDiff === direction && !target) return true;
-                if (rowDiff === 2 * direction && sr === (piece.color === 'W' ? 6 : 1) && !target) return true;
-            }
-            // Capture move
-            if (dC === 1 && rowDiff === direction && target) return true;
-            
-            // NOTE: En passant and two-step blocking are ignored here for simplicity in check logic
-            return false;
-        }
-        case 'Rook': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0);
-        case 'Bishop': return dR === dC && dR > 0;
-        case 'Queen': return (dR === 0 && dC > 0) || (dC === 0 && dR > 0) || (dR === dC && dR > 0);
-        case 'Knight': return (dR === 2 && dC === 1) || (dR === 1 && dC === 2);
-        case 'King': return dR <= 1 && dC <= 1;
-        default: return false;
-    }
-};
-
-// Finds the King's position for the given color
 const findKing = (board, color) => {
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
@@ -117,10 +106,9 @@ const findKing = (board, color) => {
             }
         }
     }
-    return null; // Should not happen in a valid game
+    return null; 
 };
 
-// Checks if the King of 'color' is in check
 const isKingInCheck = (board, color) => {
     const kingPos = findKing(board, color);
     if (!kingPos) return false;
@@ -128,32 +116,24 @@ const isKingInCheck = (board, color) => {
     return isSquareAttacked(board, kingPos.r, kingPos.c, opponentColor);
 };
 
-// Simulates a move and checks if the King is safe afterwards
 const doesMoveLeaveKingSafe = (board, sr, sc, tr, tc, turn) => {
-    // 1. Simulate the move
     const newBoard = board.map(row => [...row]);
     newBoard[tr][tc] = newBoard[sr][sc];
     newBoard[sr][sc] = null;
-
-    // 2. Check if the current player's King is in check on the new board
     return !isKingInCheck(newBoard, turn);
 };
 
-
-// --- Core Validation Function (Re-used from before, but now calls King safety check) ---
 const isValidMove = (board, sr, sc, tr, tc, turn) => {
     const piece = board[sr][sc];
     const target = board[tr][tc];
 
     if (!piece) return false;
     if (sr === tr && sc === tc) return false;
-    if (piece.color !== turn) return false; // Must be the player's turn
+    if (piece.color !== turn) return false;
     if (target && target.color === piece.color) return false;
 
-    // First, check basic piece movement rule using the existing logic (simplified/base)
     if (!isValidMoveBase(board, sr, sc, tr, tc)) return false;
 
-    // Second, check path clearance for long-range pieces
     const dR = Math.abs(tr - sr);
     const dC = Math.abs(tc - sc);
     const pieceType = piece.piece;
@@ -162,11 +142,9 @@ const isValidMove = (board, sr, sc, tr, tc, turn) => {
         if (!checkPathClearance(board, sr, sc, tr, tc)) return false;
     }
 
-    // Third, check if the move leaves the King in check (The essential chess rule!)
     return doesMoveLeaveKingSafe(board, sr, sc, tr, tc, turn);
 };
 
-// Gets all *legal* moves for the current player
 const getValidMoves = (board, sr, sc, turn) => {
     const moves = [];
     for (let tr = 0; tr < 8; tr++) {
@@ -179,18 +157,15 @@ const getValidMoves = (board, sr, sc, turn) => {
     return moves;
 };
 
-// Checks for Checkmate/Stalemate
 const checkGameEnd = (board, turn) => {
-    // 1. Find all possible *legal* moves for the current player
     for (let sr = 0; sr < 8; sr++) {
         for (let sc = 0; sc < 8; sc++) {
             const piece = board[sr][sc];
             if (piece && piece.color === turn) {
-                // If any piece has at least one legal move, the game is not over
                 for (let tr = 0; tr < 8; tr++) {
                     for (let tc = 0; tc < 8; tc++) {
                         if (isValidMove(board, sr, sc, tr, tc, turn)) {
-                            return { isOver: false, result: null }; // Game continues
+                            return { isOver: false, result: null };
                         }
                     }
                 }
@@ -198,7 +173,6 @@ const checkGameEnd = (board, turn) => {
         }
     }
 
-    // 2. If no legal moves are found, check if it's checkmate or stalemate
     if (isKingInCheck(board, turn)) {
         return { isOver: true, result: turn === 'W' ? 'B Wins (Checkmate)' : 'W Wins (Checkmate)' };
     } else {
@@ -206,28 +180,32 @@ const checkGameEnd = (board, turn) => {
     }
 };
 
+// ----------------------------------------------------------------------
+// --- Main Component ---
+// ----------------------------------------------------------------------
 
 const ChessGame = () => {
     const [board, setBoard] = useState(initialBoard);
     const [turn, setTurn] = useState('W');
-    const [selectedSquare, setSelectedSquare] = useState(null); // {row, col}
+    const [selectedSquare, setSelectedSquare] = useState(null); 
     const [validMoves, setValidMoves] = useState([]);
-    const [lastMove, setLastMove] = useState(null); // { start: {row, col}, end: {row, col}, san: string }
-    const [moveHistory, setMoveHistory] = useState([]); // Array of strings (SAN)
+    const [lastMove, setLastMove] = useState(null); 
+    const [moveHistory, setMoveHistory] = useState([]); 
     const [gameStatus, setGameStatus] = useState({ isOver: false, result: 'Game On' });
     
-    // Determine if the current player is in check
     const inCheck = useMemo(() => isKingInCheck(board, turn), [board, turn]);
 
-    // Send history to backend (unchanged)
-    const sendMoveHistory = useCallback((history) => {
-        // ... (API call logic remains the same)
+    // --- UPDATED sendMoveHistory: Now accepts isCheck boolean ---
+    const sendMoveHistory = useCallback((history, isCheck = false) => {
         const apiUrl = 'http://127.0.0.1:5000/api/data'; 
 
         fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ moveHistory: history }),
+            body: JSON.stringify({ 
+                moveHistory: history,
+                isCheck: isCheck // <-- NEW: Explicit Check status
+            }),
         })
         .then(response => {
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -238,7 +216,7 @@ const ChessGame = () => {
     }, []); 
 
     const handleSquareClick = useCallback((r, c) => {
-        if (gameStatus.isOver) return; // Ignore clicks if game is over
+        if (gameStatus.isOver) return;
 
         const piece = board[r][c];
 
@@ -253,7 +231,6 @@ const ChessGame = () => {
             }
 
             if (isMoveValid) {
-                // Execute the move
                 const newBoard = board.map(row => [...row]);
                 const movingPiece = newBoard[selectedSquare.row][selectedSquare.col];
 
@@ -276,42 +253,45 @@ const ChessGame = () => {
                 newBoard[r][c] = movingPiece;
                 newBoard[selectedSquare.row][selectedSquare.col] = null;
 
-                // Check for pawn promotion (simplified to Queen)
+                // Handle promotion
                 if (movingPiece.piece === 'Pawn' && (r === 0 || r === 7)) {
                     movingPiece.piece = 'Queen';
-                    sanNotation += '=Q'; // Add promotion indicator
+                    sanNotation += '=Q';
                 }
 
-                // 3. Update States
+                // 3. Prepare for Next Turn
                 const nextTurn = turn === 'W' ? 'B' : 'W';
                 const newMoveHistory = [...moveHistory, sanNotation];
                 
+                // 4. Check for Check/Checkmate/Stalemate *for the NEXT player*
+                const gameEndResult = checkGameEnd(newBoard, nextTurn);
+                const isNextKingInCheck = isKingInCheck(newBoard, nextTurn); // Check status for next player
+
+                if (gameEndResult.isOver) {
+                    // Checkmate or Stalemate
+                    sanNotation = gameEndResult.result.includes('Checkmate') ? sanNotation + '#' : sanNotation;
+                    setGameStatus(gameEndResult);
+                } else if (isNextKingInCheck) {
+                    // Simple Check
+                    sanNotation += '+';
+                }
+                
+                // 5. Update States
                 setBoard(newBoard);
                 setLastMove({ start: selectedSquare, end: { row: r, col: c }, san: sanNotation });
                 setMoveHistory(newMoveHistory); 
-                sendMoveHistory(newMoveHistory); 
                 setTurn(nextTurn);
                 setSelectedSquare(null);
                 setValidMoves([]);
-
-                // 4. Check for Checkmate/Stalemate *for the NEXT player*
-                const gameEndResult = checkGameEnd(newBoard, nextTurn);
-                if (gameEndResult.isOver) {
-                    // Update SAN with check/checkmate indicator
-                    sanNotation = gameEndResult.result.includes('Checkmate') ? sanNotation + '#' : sanNotation;
-                    setLastMove(prev => ({ ...prev, san: sanNotation }));
-                    setGameStatus(gameEndResult);
-                } else if (isKingInCheck(newBoard, nextTurn)) {
-                    // Update SAN with check indicator
-                    sanNotation += '+';
-                    setLastMove(prev => ({ ...prev, san: sanNotation }));
-                }
+                
+                // *** API CALL: Pass the move history and the explicit check status ***
+                sendMoveHistory(newMoveHistory, isNextKingInCheck); 
+                // ********************************************************************
 
                 return;
             }
 
             if (piece && piece.color === turn) {
-                // Select a new piece of the current player's color
                 setSelectedSquare({ row: r, col: c });
                 setValidMoves(getValidMoves(board, r, c, turn));
                 return;
@@ -321,7 +301,6 @@ const ChessGame = () => {
             setValidMoves([]);
 
         } else {
-            // No piece selected: Attempt to select a piece
             if (piece && piece.color === turn) {
                 setSelectedSquare({ row: r, col: c });
                 setValidMoves(getValidMoves(board, r, c, turn));
@@ -337,15 +316,14 @@ const ChessGame = () => {
         setLastMove(null);
         setMoveHistory([]);
         setGameStatus({ isOver: false, result: 'Game On' });
-        sendMoveHistory([]); // Send empty history on reset
+        sendMoveHistory([], false); // Send empty history and false check status
     }, [sendMoveHistory]);
 
     const lastMoveDisplay = useMemo(() => {
         if (!lastMove) return "—";
         return `${lastMove.san}`;
     }, [lastMove]);
-    
-    // --- Display Components (Square, Ranks, Files, History) remain largely the same ---
+
 
     const Square = ({ piece, r, c }) => {
         const isLight = (r + c) % 2 === 0;
@@ -353,13 +331,12 @@ const ChessGame = () => {
         const isValid = validMoves.some(m => m.row === r && m.col === c);
         const isKing = piece && piece.piece === 'King';
 
-        // Conditional classes based on state
         const squareClass = [
             'square',
             isLight ? 'light' : 'dark',
             isSelected ? 'selected' : '',
             isValid ? 'valid-move' : '',
-            isKing && inCheck && piece.color === turn ? 'king-in-check' : '', // Highlight King in Check
+            isKing && inCheck && piece.color === turn ? 'king-in-check' : '',
         ].filter(Boolean).join(' ');
 
         const pieceClass = piece 
@@ -379,11 +356,14 @@ const ChessGame = () => {
         );
     };
     
-    // ... renderRanks, renderFiles, and renderMoveHistory functions are omitted for brevity ...
-    // ... they remain the same as the user's initial code ...
+    const renderRanks = () => {
+        return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{8 - i}</div>));
+    };
 
-    const renderRanks = () => { /* ... unchanged ... */ return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{8 - i}</div>)); };
-    const renderFiles = () => { /* ... unchanged ... */ return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{String.fromCharCode(65 + i)}</div>)); };
+    const renderFiles = () => {
+        return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{String.fromCharCode(65 + i)}</div>));
+    };
+
     const renderMoveHistory = () => {
         const moves = [];
         for (let i = 0; i < moveHistory.length; i += 2) {
