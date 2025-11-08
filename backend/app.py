@@ -9,6 +9,7 @@ CORS(app) # Enable CORS for your Flask app
 @app.route('/api/data', methods=['POST'])
 def receive_data():
     if request.method == 'POST':
+        #fake content
         data = request.get_json()  # Get JSON data; data is a Python dictionary
         
         # --- Safely Extract Required Data ---
