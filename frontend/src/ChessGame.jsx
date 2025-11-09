@@ -636,7 +636,7 @@ const ChessGame = () => {
 
     return (
         <div className="container">
-            <h1 className="game-title">Pure React Chess ♟️</h1>
+            <h1 className="game-title">♟️ Gemini Chess ♟️</h1>
 
             <div className="settings-panel">
                 <label htmlFor="elo-input">Set Opponent ELO (600-3000, increments of 100):</label>
@@ -683,7 +683,7 @@ const ChessGame = () => {
                 </div>
                 
                 <div className="history-panel">
-                    <h2 className="history-title">Move History</h2>
+                    <h2 className="history-title">⚔️ Move History ⚔️</h2>
                     <div className="history-list">
                         {renderMoveHistory()}
                     </div>
