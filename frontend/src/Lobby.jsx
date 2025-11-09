@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ChessGame from './ChessGame'; // Assuming ChessGame is in the same directory
-import './ChessGame.css'; // Use the same CSS for consistent theming
+import './Lobby.css'; // Use the same CSS for consistent theming
 
 // Define constants for the game modes
 const GAME_MODE = {
@@ -16,15 +16,16 @@ const Lobby = () => {
     // This component will render the main lobby view with buttons
     const renderLobby = () => (
         <div className="container lobby-container">
-            <h1 className="game-title">Welcome to Gemini Chess! ♟️</h1>
-            <p className="lobby-subtitle">Choose your opponent:</p>
+            {/* The title has been cleaned up slightly */}
+            <h1 className="game-title">♟️ Welcome to Gemini Chess! ♟️</h1> 
+            <p className="lobby-subtitle">🗡️ Choose your opponent:</p>
 
             <div className="button-group">
                 <button
                     className="mode-button ai-button"
                     onClick={() => setCurrentMode(GAME_MODE.VS_AI)}
                 >
-                    <span className="button-icon">🤖</span>
+                    <span className="button-icon">⚔️</span>
                     <span className="button-text">Play Against Gemini AI</span>
                 </button>
 
@@ -37,7 +38,7 @@ const Lobby = () => {
                         setCurrentMode(GAME_MODE.VS_USER); 
                     }}
                 >
-                    <span className="button-icon">🧑‍🤝‍🧑</span>
+                    <span className="button-icon">⚔️</span>
                     <span className="button-text">Find a Human Opponent</span>
                 </button>
             </div>

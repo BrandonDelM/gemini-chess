@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import './ChessGame.css';
 
 // Multiplayer / AI choice
-import { getSocket, emitMove, emitJoinGame } from './SocketManager';
+import { getSocket, emitMove, emitJoinRoom } from './SocketManager';
 const socket = getSocket();
 
 // Helper function to convert zero-indexed column/row to algebraic notation (e.g., [7, 0] -> "A1")
@@ -308,7 +308,7 @@ const ChessGame = () => {
     const [myColor, setMyColor] = useState('W'); // Color of human player, W for AI mode assigned by server for Human
     const [roomId, setRoomId] = useState('ai_game_room'); // ID fixed for AI, dynamic for Human
 
-    const [eloSkill, setEloSkill] = useState(1800); 
+    const [eloSkill, setEloSkill] = useState(1000); 
     const [analysis, setAnalysis] = useState('—'); // Store the analysis evaluation
     const [replayIndex, setReplayIndex] = useState(-1); // -1 is live, 0 is game start, 1 is after move 1
 
@@ -420,7 +420,7 @@ const ChessGame = () => {
         const coords = findMoveCoordinatesFromSAN(currentBoard, sanMove, 'B');
 
         if (!coords) {
-            console.error(`Gemini move "${sanMove}" by "${moveColor}" could not be executed.`);
+            console.error(`Gemini move "${sanMove}" could not be executed.`);
             return false; // Return false on failure
         }
 
@@ -586,7 +586,7 @@ const ChessGame = () => {
                     let moveExecuted = false;
                     
                     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-                        const currentSkill = isNaN(eloSkill) ? 1800 : eloSkill;
+                        const currentSkill = isNaN(eloSkill) ? 1000 : eloSkill;
                         const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck, newBoard, currentSkill);
                         
                         if (geminiMoveSan) {
@@ -645,7 +645,7 @@ const ChessGame = () => {
         setGameStatus({ isOver: false, result: 'Game On' });
         setAnalysis('—');
         
-        const currentSkill = isNaN(eloSkill) ? 1800 : eloSkill;
+        const currentSkill = isNaN(eloSkill) ? 1000 : eloSkill;
         sendMoveHistory([], false, newInitialBoard, currentSkill);
     }, [sendMoveHistory, eloSkill]);
 
@@ -773,7 +773,7 @@ const ChessGame = () => {
                     min="600"
                     max="3000"
                     step="100" 
-                    placeholder="1800"
+                    placeholder="1000"
                     disabled={gameStarted}
                 />
             </div>
