@@ -9,7 +9,7 @@ const toAlgebraic = (row, col) => {
     return `${file}${rank}`;
 };
 
-// Piece Definitions and Symbols (unchanged)
+// Piece Definitions and Symbols
 const initialBoard = [
     [{ piece: 'Rook', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Queen', color: 'B' }, { piece: 'King', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Rook', color: 'B' }],
     [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', 'color': 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
@@ -190,23 +190,24 @@ const getValidMoves = (board, sr, sc, turn) => {
 };
 
 const checkGameEnd = (board, turn) => {
+    // Check if the current player has any legal moves.
     for (let sr = 0; sr < 8; sr++) {
         for (let sc = 0; sc < 8; sc++) {
             const piece = board[sr][sc];
             if (piece && piece.color === turn) {
-                for (let tr = 0; tr < 8; tr++) {
-                    for (let tc = 0; tc < 8; tc++) {
-                        if (isValidMove(board, sr, sc, tr, tc, turn)) {
-                            return { isOver: false, result: null };
-                        }
-                    }
+                if (getValidMoves(board, sr, sc, turn).length > 0) {
+                    return { isOver: false, result: null };
                 }
             }
         }
     }
+    
+    // If no legal moves:
     if (isKingInCheck(board, turn)) {
+        // Checkmate
         return { isOver: true, result: turn === 'W' ? 'B Wins (Checkmate)' : 'W Wins (Checkmate)' };
     } else {
+        // Stalemate
         return { isOver: true, result: 'Draw (Stalemate)' };
     }
 };
@@ -297,7 +298,6 @@ const ChessGame = () => {
     const [moveHistory, setMoveHistory] = useState([]); 
     const [gameStatus, setGameStatus] = useState({ isOver: false, result: 'Game On' });
     
-    // --- NEW ELO STATE ---
     const [eloSkill, setEloSkill] = useState(1800); 
     
     const inCheck = useMemo(() => isKingInCheck(board, turn), [board, turn]);
@@ -306,7 +306,6 @@ const ChessGame = () => {
     const handleEloChange = (e) => {
         const rawValue = e.target.value;
         
-        // Allow empty field
         if (rawValue === '') {
              setEloSkill('');
              return;
@@ -314,17 +313,11 @@ const ChessGame = () => {
 
         const value = parseInt(rawValue, 10);
         
-        // 1. Check if valid number and within bounds
         if (isNaN(value) || value < 600 || value > 3000) return;
         
-        // 2. Enforce 100-point increment (only update state if divisible by 100)
+        // Enforce 100-point increment
         if (value % 100 === 0) {
             setEloSkill(value);
-        } else {
-            // Optional: If you want the input field to update immediately while user types,
-            // but only commit multiples of 100 to the state used by the AI.
-            // For now, let's keep it simple and update the state directly.
-            setEloSkill(value); 
         }
     };
 
@@ -332,7 +325,6 @@ const ChessGame = () => {
     const sendMoveHistory = useCallback(async (history, isCheck = false, currentBoard, skill) => {
         const apiUrl = 'http://127.0.0.1:5000/api/data'; 
         try {
-            // Serialize board and include skill
             const serializedBoard = currentBoard.map(row => 
                 row.map(cell => cell ? { piece: cell.piece, color: cell.color } : null)
             );
@@ -349,7 +341,6 @@ const ChessGame = () => {
             });
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const data = await response.json();
-            console.log('Backend response:', data);
             return data.geminiMove; 
         } catch (error) { 
             console.error('Error sending move history to backend:', error); 
@@ -359,9 +350,7 @@ const ChessGame = () => {
 
     // --- executeGeminiMove (Handles Black's move execution) ---
     const executeGeminiMove = useCallback((sanMove, currentBoard) => {
-        if (gameStatus.isOver || !sanMove || !currentBoard) {
-            return false;
-        }
+        if (gameStatus.isOver || !sanMove || !currentBoard) return false;
 
         const coords = findMoveCoordinatesFromSAN(currentBoard, sanMove, 'B');
 
@@ -447,6 +436,14 @@ const ChessGame = () => {
                 setValidMoves([]);
                 return;
             }
+            
+            // FIX: Check for illegal King capture *before* executing the move
+            const targetPiece = board[r][c];
+            if (targetPiece && targetPiece.piece === 'King' && targetPiece.color === 'B') {
+                setGameStatus({ isOver: true, result: 'White Wins (King Captured)' });
+                alert("Game Over! White Wins by illegal King capture.");
+                return;
+            }
 
             if (isMoveValid) {
                 // --- White's Move Execution ---
@@ -507,23 +504,23 @@ const ChessGame = () => {
                 setSelectedSquare(null);
                 setValidMoves([]);
                 
-                // --- ASYNC AI CALL WITH RETRY LOOP ---
+                // --- ASYNC AI CALL WITH RETRY LOOP (MAX_RETRIES = 10) ---
                 if (nextTurn === 'B' && !gameEndResult.isOver) {
-                    const MAX_RETRIES = 3;
+                    const MAX_RETRIES = 10; // Increased retry count
                     let moveExecuted = false;
                     
                     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-                        // Use validated skill or default to 1800
                         const currentSkill = isNaN(eloSkill) ? 1800 : eloSkill;
                         
                         console.log(`Requesting Gemini move (Attempt ${attempt + 1}/${MAX_RETRIES}) at ELO ${currentSkill}...`);
+                        
                         const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck, newBoard, currentSkill);
                         
                         if (geminiMoveSan) {
                             moveExecuted = executeGeminiMove(geminiMoveSan, newBoard);
                             if (moveExecuted) {
                                 console.log(`Gemini move ${geminiMoveSan} executed successfully.`);
-                                break;
+                                break; // Exit loop on success
                             }
                         } else {
                             break;
@@ -531,9 +528,21 @@ const ChessGame = () => {
                     }
                     
                     if (!moveExecuted) {
-                        console.error(`AI failed to execute a legal move after ${MAX_RETRIES} attempts. Player White must move again.`);
-                        setTurn('W'); 
-                        alert("AI failed to find a legal move. It's your turn again!");
+                        console.error(`AI failed to execute a legal move after ${MAX_RETRIES} attempts.`);
+                        
+                        // Determine final game status when AI fails
+                        const finalCheck = checkGameEnd(newBoard, nextTurn);
+                        
+                        if (finalCheck.isOver) {
+                            // This is Checkmate/Stalemate
+                            setGameStatus(finalCheck);
+                            alert(`Game Over! ${finalCheck.result}`);
+                        } else {
+                            // If Black has legal moves but AI failed to find one (AI Bug / Invalid SAN):
+                            // Revert turn back to White
+                            setTurn('W'); 
+                            alert("AI failed to find a legal move. It's your turn again!");
+                        }
                     }
                 }
                 
@@ -570,18 +579,15 @@ const ChessGame = () => {
         setMoveHistory([]);
         setGameStatus({ isOver: false, result: 'Game On' });
         
-        // Use validated skill or default to 1800
         const currentSkill = isNaN(eloSkill) ? 1800 : eloSkill;
         sendMoveHistory([], false, newInitialBoard, currentSkill);
     }, [sendMoveHistory, eloSkill]);
 
-    // FIX 1: Removed <strong> tags from this useMemo
     const lastMoveDisplay = useMemo(() => { 
         if (!lastMove) return "—"; 
         return lastMove.san; 
     }, [lastMove]);
     
-    // Check if any move has been played to disable ELO input
     const gameStarted = moveHistory.length > 0;
     
     const Square = ({ piece, r, c }) => {
@@ -636,7 +642,7 @@ const ChessGame = () => {
 
     return (
         <div className="container">
-            <h1 className="game-title">♟️ Gemini Chess ♟️</h1>
+            <h1 className="game-title">Pure React Chess ♟️</h1>
 
             <div className="settings-panel">
                 <label htmlFor="elo-input">Set Opponent ELO (600-3000, increments of 100):</label>
@@ -647,7 +653,7 @@ const ChessGame = () => {
                     onChange={handleEloChange}
                     min="600"
                     max="3000"
-                    step="100"
+                    step="100" 
                     placeholder="1800"
                     disabled={gameStarted}
                 />
@@ -661,7 +667,7 @@ const ChessGame = () => {
                     Result: <strong>{gameStatus.result}</strong>
                 </div>
                 <div className="status-item move-display">
-                    Last Move: <strong>{lastMoveDisplay}</strong> {/* Added <strong> back for display consistency */}
+                    Last Move: <strong>{lastMoveDisplay}</strong>
                 </div>
             </div>
 
@@ -683,7 +689,7 @@ const ChessGame = () => {
                 </div>
                 
                 <div className="history-panel">
-                    <h2 className="history-title">⚔️ Move History ⚔️</h2>
+                    <h2 className="history-title">Move History</h2>
                     <div className="history-list">
                         {renderMoveHistory()}
                     </div>

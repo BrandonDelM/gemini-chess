@@ -6,7 +6,7 @@ app = Flask(__name__)
 CORS(app)
 
 def board_to_fen(board_state):
-    """Convert board state to FEN notation for better AI understanding"""
+    """Convert board state to FEN notation (Standard Rank 8 to 1 order)."""
     fen_rows = []
     
     for row in board_state:
@@ -34,10 +34,17 @@ def board_to_fen(board_state):
             fen_row += str(empty_count)
         fen_rows.append(fen_row)
     
+    # FEN is standardized Rank 8 to Rank 1. We assume input array is also 8 to 1.
     return '/'.join(fen_rows)
 
-def board_to_readable_text(board_state):
-    """Convert board to human-readable format"""
+def board_to_readable_text(board_state, player_color):
+    """
+    Convert board to human-readable format, reversing for Black's perspective.
+    
+    Args:
+        board_state: 8x8 array (Row 0 = Rank 8, Row 7 = Rank 1)
+        player_color: The color whose turn it is ("black" or "white").
+    """
     piece_symbols = {
         ('Rook', 'W'): 'R', ('Knight', 'W'): 'N', ('Bishop', 'W'): 'B',
         ('Queen', 'W'): 'Q', ('King', 'W'): 'K', ('Pawn', 'W'): 'P',
@@ -45,9 +52,18 @@ def board_to_readable_text(board_state):
         ('Queen', 'B'): 'q', ('King', 'B'): 'k', ('Pawn', 'B'): 'p'
     }
     
+    # Ranks (8 down to 1)
+    ranks_list = list(range(8, 0, -1))
+    rows_to_display = list(board_state)
+    
+    # Flip the visualization for Black (AI) so Rank 1 is at the bottom of the diagram.
+    if player_color == "black":
+        rows_to_display.reverse()
+        ranks_list.reverse() # Ranks 1 up to 8 (for side numbering)
+
     lines = ["  a b c d e f g h"]
-    for idx, row in enumerate(board_state):
-        rank = 8 - idx
+    for idx, row in enumerate(rows_to_display):
+        rank = ranks_list[idx]
         line = f"{rank} "
         for cell in row:
             if cell is None:
@@ -57,10 +73,12 @@ def board_to_readable_text(board_state):
                 line += f"{symbol} "
         lines.append(line)
     
+    lines.append("  a b c d e f g h")
     lines.append("\nWhite pieces: UPPERCASE (R N B Q K P)")
     lines.append("Black pieces: lowercase (r n b q k p)")
     
     return '\n'.join(lines)
+
 
 @app.route('/api/data', methods=['POST'])
 def receive_data():
@@ -70,16 +88,16 @@ def receive_data():
         move_history = data.get('moveHistory', [])
         is_check_state = data.get('isCheck', False)
         board_state = data.get('boardState', [])
-        # --- NEW: Get ELO from frontend payload ---
-        elo_skill = data.get('eloSkill', 1200) # Use 1200 as a safe fallback
+        # --- ELO Input ---
+        elo_skill = data.get('eloSkill', 1800) # Use 1800 as fallback
         
         print(f"Received move history: {move_history}")
         print(f"Check state: {is_check_state}")
         print(f"Target ELO: {elo_skill}")
         
-        # Convert board to FEN and readable format
+        # Convert board to FEN (standard) and readable format (flipped for black)
         fen = board_to_fen(board_state)
-        readable_board = board_to_readable_text(board_state)
+        readable_board = board_to_readable_text(board_state, "black") 
         
         print(f"FEN: {fen}")
         
@@ -89,8 +107,7 @@ def receive_data():
                 readable_board=readable_board,
                 board_state=move_history,
                 state=is_check_state,
-                # --- Pass the received ELO ---
-                chess_skill=elo_skill,
+                chess_skill=elo_skill, # Passed dynamic ELO
                 color="black"
             )
             
