@@ -1,12 +1,12 @@
 import React from 'react';
 // Assuming ChessGame.jsx is in the same directory as App.jsx
-import ChessGame from './ChessGame.jsx'; 
+import Lobby from './Lobby.jsx'; 
 
 const App = () => {
   return (
     <div className="App">
       {/* Render the Chess Game component */}
-      <ChessGame />
+      <Lobby />
       
       {/* You can add other elements here if needed */}
     </div>
