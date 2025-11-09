@@ -1,47 +1,114 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS # Import CORS to handle cross-origin requests
-# Assuming 'gemini.py' contains your gemini_move function definition
+from flask_cors import CORS
 from gemini import gemini_move 
 
 app = Flask(__name__)
-CORS(app) # Enable CORS for your Flask app
+CORS(app)
+
+def board_to_fen(board_state):
+    """Convert board state to FEN notation for better AI understanding"""
+    fen_rows = []
+    
+    for row in board_state:
+        empty_count = 0
+        fen_row = ""
+        
+        for cell in row:
+            if cell is None:
+                empty_count += 1
+            else:
+                if empty_count > 0:
+                    fen_row += str(empty_count)
+                    empty_count = 0
+                
+                piece_map = {
+                    'Pawn': 'p', 'Rook': 'r', 'Knight': 'n',
+                    'Bishop': 'b', 'Queen': 'q', 'King': 'k'
+                }
+                piece_char = piece_map[cell['piece']]
+                if cell['color'] == 'W':
+                    piece_char = piece_char.upper()
+                fen_row += piece_char
+        
+        if empty_count > 0:
+            fen_row += str(empty_count)
+        fen_rows.append(fen_row)
+    
+    return '/'.join(fen_rows)
+
+def board_to_readable_text(board_state):
+    """Convert board to human-readable format"""
+    piece_symbols = {
+        ('Rook', 'W'): '♜', ('Knight', 'W'): '♞', ('Bishop', 'W'): '♝',
+        ('Queen', 'W'): '♛', ('King', 'W'): '♚', ('Pawn', 'W'): '♟',
+        ('Rook', 'B'): '♖', ('Knight', 'B'): '♘', ('Bishop', 'B'): '♗',
+        ('Queen', 'B'): '♕', ('King', 'B'): '♔', ('Pawn', 'B'): '♙'
+    }
+    
+    lines = ["  a b c d e f g h"]
+    for idx, row in enumerate(board_state):
+        rank = 8 - idx
+        line = f"{rank} "
+        for cell in row:
+            if cell is None:
+                line += "· "
+            else:
+                symbol = piece_symbols.get((cell['piece'], cell['color']), '?')
+                line += f"{symbol} "
+        lines.append(line)
+    
+    return '\n'.join(lines)
 
 @app.route('/api/data', methods=['POST'])
 def receive_data():
     if request.method == 'POST':
-        #fake content
-        data = request.get_json()  # Get JSON data; data is a Python dictionary
+        data = request.get_json()
         
-        # --- Safely Extract Required Data ---
-        move_history = data.get('moveHistory') 
-        is_check_state = data.get('isCheck', False) # Default to False if key missing
+        move_history = data.get('moveHistory', [])
+        is_check_state = data.get('isCheck', False)
+        board_state = data.get('boardState', [])
         
-        print(f"Received data from frontend: {data}")
-
-        # --- Call Gemini for Black's Move ---
-        # Note: We must pass all required arguments (board_state, state, chess_skill).
-        # Assuming we set the opponent color to "black" and a skill level of 1200.
+        print(f"Received move history: {move_history}")
+        print(f"Check state: {is_check_state}")
+        
+        # Convert board to FEN and readable format
+        fen = board_to_fen(board_state)
+        readable_board = board_to_readable_text(board_state)
+        
+        print(f"FEN: {fen}")
+        print(f"Board:\n{readable_board}")
+        
         try:
             gemini_move_san = gemini_move(
-                board_state=move_history, 
-                state=is_check_state, 
-                chess_skill=1200, 
+                fen=fen,
+                readable_board=readable_board,
+                board_state=move_history,
+                state=is_check_state,
+                chess_skill=1200,
                 color="black"
             )
+            
+            # Clean up the response - remove any extra whitespace or newlines
+            gemini_move_san = gemini_move_san.strip()
+            
         except Exception as e:
             print(f"Error during gemini_move call: {e}")
-            # Return an error or a fallback move if the AI call fails
-            return jsonify({'error': f'AI move generation failed: {e}', 'geminiMove': None}), 500
+            return jsonify({
+                'error': f'AI move generation failed: {e}',
+                'geminiMove': None
+            }), 500
 
         print(f"Gemini move generated: {gemini_move_san}")
         
-        # --- Return the move to the frontend ---
         return jsonify({
-            'message': 'Data received and move generated successfully!', 
-            'received_data': data,
-            'geminiMove': gemini_move_san # The SAN move string for the frontend to execute
+            'message': 'Data received and move generated successfully!',
+            'received_data': {
+                'moveHistory': move_history,
+                'isCheck': is_check_state,
+                'fen': fen
+            },
+            'geminiMove': gemini_move_san
         })
 
 if __name__ == '__main__':
-    # Make sure to run the file with its correct, non-conflicting name (e.g., app.py)
     app.run(debug=True)
