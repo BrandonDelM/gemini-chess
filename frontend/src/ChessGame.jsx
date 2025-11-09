@@ -1,6 +1,10 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import './ChessGame.css'; // Import external CSS file
 
+// Multiplayer / AI choice
+import { getSocket, emitMove, emitJoinGame } from './SocketManager';
+const socket = getSocket();
+
 // Helper function to convert zero-indexed column/row to algebraic notation (e.g., [7, 0] -> "A1")
 const toAlgebraic = (row, col) => {
     if (row === null || col === null || row === undefined || col === undefined) return null;
@@ -317,6 +321,11 @@ const ChessGame = () => {
     const [moveHistory, setMoveHistory] = useState([]); 
     const [gameStatus, setGameStatus] = useState({ isOver: false, result: 'Game On' });
     
+    // Game mode selector (AI by default)
+    const [gameMode, setGameMode] = useState('AI');
+    const [myColor, setMyColor] = useState('W'); // Color of human player, W for AI mode assigned by server for Human
+    const [roomId, setRoomId] = useState('ai_game_room'); // ID fixed for AI, dynamic for Human
+
     const inCheck = useMemo(() => isKingInCheck(board, turn), [board, turn]);
 
     // --- sendMoveHistory (Async API call to Flask) ---
@@ -337,14 +346,14 @@ const ChessGame = () => {
         }
     }, []); 
 
-    // --- executeGeminiMove (Handles Black's move execution) ---
-    const executeGeminiMove = useCallback((sanMove) => {
+    // --- executeMove (REFACTORED FROM executeGeminiMove, Handles Black's move execution) ---
+    const executeMove = useCallback((sanMove, moveColor) => {
         if (gameStatus.isOver || !sanMove) return false;
 
-        const coords = findMoveCoordinatesFromSAN(board, sanMove, 'B');
+        const coords = findMoveCoordinatesFromSAN(board, sanMove, moveColor);
 
         if (!coords) {
-            console.error(`Gemini move "${sanMove}" could not be executed.`);
+            console.error(`Gemini move "${sanMove}" by "${moveColor}" could not be executed.`);
             return false; // Return false on failure
         }
 

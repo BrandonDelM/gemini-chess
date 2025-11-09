@@ -39,7 +39,7 @@ async function startServer() {
   const games = {}; // game servers
   io.on('connection', (socket) => {
     console.log('User: ${socket.id}') // development debugging users
-    
+
     // Matchmaking
     socket.on('joinRoom', (roomId) => {
       socket.join(roomId);
@@ -58,7 +58,7 @@ async function startServer() {
     socket.on('disconnect', () => {
       console.log('User disconnected: ${socket.id}'); // dev debugging user disconnect
 
-      // Add serverside comms for disconnection
+      // Add serverside comms for disconnection to user
 
     })
   })
