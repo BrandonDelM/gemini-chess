@@ -19,7 +19,7 @@ def gemini_move(fen, readable_board, board_state, state, chess_skill, color="bla
         chess_skill: ELO rating to simulate (REQUIRED from frontend)
         color: Which color to play ("black" or "white")
     """
-    # CRITICAL FIX: Make the check status extremely urgent
+    # CRITICAL: Make the check status extremely urgent
     check_status = "IN CHECK. MUST DEFEND KING IMMEDIATELY" if state else "not in check"
     
     # Build the move history string
@@ -63,7 +63,6 @@ CRITICAL RULES:
 2. The board visualization has ranks 1 through 8 running BOTTOM to TOP.
 3. You can ONLY move BLACK pieces.
 4. If the situation is 'IN CHECK', your move MUST be a legal move that resolves the check.
-5. If you dont see a BLACK piece (ex: no bishops, queen, etc.) on the board, then that piece isn't available and you CANT use it.
 
 INSTRUCTIONS:
 1. Analyze the current position carefully.
@@ -118,3 +117,44 @@ Your move:"""
     print(f"Cleaned move: {move}")
     
     return move
+
+def gemini_analyze(fen, move_history):
+    """
+    Get a simple material and positional analysis from Gemini.
+    
+    Args:
+        fen: FEN string of the current position.
+        move_history: List of moves in SAN notation up to this point.
+    
+    Returns:
+        A concise evaluation string (e.g., '+0.5', 'Black Wins', 'Equal').
+    """
+    
+    if len(move_history) > 0:
+        last_move = move_history[-1]
+    else:
+        last_move = "Game Start"
+
+    prompt = f"""You are a master chess analyst. Your task is to provide a single, concise evaluation of the following chess position.
+
+CURRENT FEN: {fen}
+LAST MOVE: {last_move}
+
+INSTRUCTIONS:
+1. Determine the best evaluation (W=White advantage, B=Black advantage).
+2. Use standard chess engine notation for advantage (e.g., +0.5, -2.0).
+3. If a side has a forced win/loss or clear mate, use 'W Wins' or 'B Wins'.
+4. Respond with ONLY the evaluation string. Do not add explanations, analysis, or extra text.
+
+Examples of expected output: +0.2, -1.5, Equal, W Wins, B Wins.
+
+Evaluation:"""
+
+    time.sleep(1) # Short delay before analysis call
+
+    try:
+        response = model.generate_content(prompt)
+        analysis = response.text.strip().replace('"', '').replace('Evaluation:', '').strip()
+        return analysis
+    except Exception as e:
+        return "Error"
