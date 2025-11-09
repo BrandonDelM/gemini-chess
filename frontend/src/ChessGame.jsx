@@ -493,10 +493,16 @@ const ChessGame = () => {
                 setSelectedSquare(null);
                 setValidMoves([]);
                 
+                console.log('White move executed. New board state:', newBoard);
+                console.log('Move history:', newMoveHistory);
+                
                 // --- ASYNC AI CALL WITH RETRY LOOP ---
                 if (nextTurn === 'B' && !gameEndResult.isOver) {
                     const MAX_RETRIES = 3;
                     let moveExecuted = false;
+                    
+                    // CRITICAL: Use the updated newBoard that has White's move applied
+                    console.log('Sending board to AI:', newBoard);
                     
                     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
                         console.log(`Requesting Gemini move (Attempt ${attempt + 1}/${MAX_RETRIES})...`);

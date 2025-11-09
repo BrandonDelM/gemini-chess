@@ -39,10 +39,10 @@ def board_to_fen(board_state):
 def board_to_readable_text(board_state):
     """Convert board to human-readable format"""
     piece_symbols = {
-        ('Rook', 'W'): '♜', ('Knight', 'W'): '♞', ('Bishop', 'W'): '♝',
-        ('Queen', 'W'): '♛', ('King', 'W'): '♚', ('Pawn', 'W'): '♟',
-        ('Rook', 'B'): '♖', ('Knight', 'B'): '♘', ('Bishop', 'B'): '♗',
-        ('Queen', 'B'): '♕', ('King', 'B'): '♔', ('Pawn', 'B'): '♙'
+        ('Rook', 'W'): 'R', ('Knight', 'W'): 'N', ('Bishop', 'W'): 'B',
+        ('Queen', 'W'): 'Q', ('King', 'W'): 'K', ('Pawn', 'W'): 'P',
+        ('Rook', 'B'): 'r', ('Knight', 'B'): 'n', ('Bishop', 'B'): 'b',
+        ('Queen', 'B'): 'q', ('King', 'B'): 'k', ('Pawn', 'B'): 'p'
     }
     
     lines = ["  a b c d e f g h"]
@@ -51,11 +51,14 @@ def board_to_readable_text(board_state):
         line = f"{rank} "
         for cell in row:
             if cell is None:
-                line += "· "
+                line += ". "
             else:
                 symbol = piece_symbols.get((cell['piece'], cell['color']), '?')
                 line += f"{symbol} "
         lines.append(line)
+    
+    lines.append("\nWhite pieces: UPPERCASE (R N B Q K P)")
+    lines.append("Black pieces: lowercase (r n b q k p)")
     
     return '\n'.join(lines)
 

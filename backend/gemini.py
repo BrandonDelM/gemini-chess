@@ -1,9 +1,10 @@
 import os
+import time
 import config as config
 import google.generativeai as genai
 
 genai.configure(api_key=config.GEMINI_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash-exp')
+model = genai.GenerativeModel('gemini-2.5-flash-lite')
 
 def gemini_move(fen, readable_board, board_state, state, color="black", chess_skill=1000):
     """
@@ -25,21 +26,47 @@ def gemini_move(fen, readable_board, board_state, state, color="black", chess_sk
         move_num = (i // 2) + 1
         white_move = board_state[i] if i < len(board_state) else ""
         black_move = board_state[i + 1] if i + 1 < len(board_state) else ""
-        move_history_str += f"{move_num}. {white_move} {black_move}\n"
+        if black_move:
+            move_history_str += f"{move_num}. {white_move} {black_move}\n"
+        else:
+            move_history_str += f"{move_num}. {white_move} ...\n"
+    
+    # Determine whose turn it is based on move count
+    move_number = len(board_state) + 1
+    is_white_to_move = len(board_state) % 2 == 0
+    
+    # Add clarification about the last move
+    last_move_info = ""
+    if board_state:
+        last_move_info = f"\nLast move played: {board_state[-1]}"
+        if is_white_to_move:
+            last_move_info += " (Black's last move)"
+        else:
+            last_move_info += " (White's last move - you must respond)"
     
     prompt = f"""You are a chess engine playing at {chess_skill} ELO strength.
 
+CRITICAL: The board position shown below is AFTER White's last move. You must respond as BLACK.
+
 CURRENT POSITION (FEN): {fen}
 
-BOARD VISUALIZATION:
+BOARD VISUALIZATION (White pieces: UPPERCASE, Black pieces: lowercase):
 {readable_board}
 
 MOVE HISTORY:
-{move_history_str if move_history_str else "Game start"}
+{move_history_str if move_history_str else "Game start"}{last_move_info}
 
 CURRENT SITUATION:
-- It is {color}'s turn (move #{len(board_state) + 1})
-- {color.capitalize()} is {check_status}
+- Move #{move_number}
+- It is BLACK's turn to move (you are BLACK)
+- Black is {check_status}
+
+CRITICAL RULES:
+1. Look ONLY at the board position above - this shows which pieces BLACK currently has
+2. BLACK pieces are shown in lowercase (r, n, b, q, k, p)
+3. You can ONLY move BLACK pieces that are currently on the board
+4. If Black's queen was captured, you CANNOT play queen moves
+5. The position shown is AFTER White's move {board_state[-1] if board_state else ""}
 
 INSTRUCTIONS:
 1. Analyze the current position carefully
@@ -59,6 +86,10 @@ EXAMPLES OF VALID SAN:
 RESPOND WITH ONLY THE MOVE - NO EXPLANATION, NO ANALYSIS, NO EXTRA TEXT.
 
 Your move:"""
+    
+    # Add 2-second delay to avoid rate limiting
+    print("Waiting 2 seconds before calling Gemini API...")
+    time.sleep(2)
     
     response = model.generate_content(prompt)
     
