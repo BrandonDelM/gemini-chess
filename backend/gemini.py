@@ -6,7 +6,7 @@ import google.generativeai as genai
 genai.configure(api_key=config.GEMINI_KEY)
 model = genai.GenerativeModel('gemini-2.5-flash-lite')
 
-def gemini_move(fen, readable_board, board_state, state, color="black", chess_skill=1000):
+def gemini_move(fen, readable_board, board_state, state, chess_skill, color="black"):
     """
     Generate a chess move using Gemini AI
     

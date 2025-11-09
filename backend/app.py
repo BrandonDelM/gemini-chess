@@ -70,16 +70,18 @@ def receive_data():
         move_history = data.get('moveHistory', [])
         is_check_state = data.get('isCheck', False)
         board_state = data.get('boardState', [])
+        # --- NEW: Get ELO from frontend payload ---
+        elo_skill = data.get('eloSkill', 1200) # Use 1200 as a safe fallback
         
         print(f"Received move history: {move_history}")
         print(f"Check state: {is_check_state}")
+        print(f"Target ELO: {elo_skill}")
         
         # Convert board to FEN and readable format
         fen = board_to_fen(board_state)
         readable_board = board_to_readable_text(board_state)
         
         print(f"FEN: {fen}")
-        print(f"Board:\n{readable_board}")
         
         try:
             gemini_move_san = gemini_move(
@@ -87,11 +89,11 @@ def receive_data():
                 readable_board=readable_board,
                 board_state=move_history,
                 state=is_check_state,
-                chess_skill=1200,
+                # --- Pass the received ELO ---
+                chess_skill=elo_skill,
                 color="black"
             )
             
-            # Clean up the response - remove any extra whitespace or newlines
             gemini_move_san = gemini_move_san.strip()
             
         except Exception as e:
