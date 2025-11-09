@@ -10,7 +10,7 @@ const toAlgebraic = (row, col) => {
 };
 
 // Piece Definitions and Symbols
-const initialBoard = [
+const initialBoardState = [
     [{ piece: 'Rook', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Queen', color: 'B' }, { piece: 'King', color: 'B' }, { piece: 'Bishop', color: 'B' }, { piece: 'Knight', color: 'B' }, { piece: 'Rook', color: 'B' }],
     [{ piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', 'color': 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }, { piece: 'Pawn', color: 'B' }],
     [null, null, null, null, null, null, null, null],
@@ -33,6 +33,7 @@ const pieceSymbols = {
 // ----------------------------------------------------------------------
 // --- CORE MOVE VALIDATION & HELPER LOGIC (Unchanged) ---
 // ----------------------------------------------------------------------
+// Helper functions (restored for full file integrity)
 
 const checkPathClearance = (board, sr, sc, tr, tc) => {
     const dr = Math.sign(tr - sr);
@@ -290,7 +291,7 @@ const findMoveCoordinatesFromSAN = (board, sanMove, turn) => {
 // ----------------------------------------------------------------------
 
 const ChessGame = () => {
-    const [board, setBoard] = useState(initialBoard);
+    const [board, setBoard] = useState(initialBoardState);
     const [turn, setTurn] = useState('W');
     const [selectedSquare, setSelectedSquare] = useState(null); 
     const [validMoves, setValidMoves] = useState([]);
@@ -299,8 +300,54 @@ const ChessGame = () => {
     const [gameStatus, setGameStatus] = useState({ isOver: false, result: 'Game On' });
     
     const [eloSkill, setEloSkill] = useState(1800); 
+    const [analysis, setAnalysis] = useState('—'); // Store the analysis evaluation
+    const [replayIndex, setReplayIndex] = useState(-1); // -1 is live, 0 is game start, 1 is after move 1
+
+    // State history: Stores board state after each move for replay
+    const [boardHistory, setBoardHistory] = useState([initialBoardState]);
     
-    const inCheck = useMemo(() => isKingInCheck(board, turn), [board, turn]);
+    // Determine which board to display (live or replay)
+    const currentBoard = replayIndex === -1 ? board : boardHistory[replayIndex];
+    
+    const inCheck = useMemo(() => isKingInCheck(currentBoard, turn), [currentBoard, turn]);
+    
+    const fetchAnalysis = useCallback(async (currentMoves, boardIndex) => {
+        setAnalysis('Analyzing...');
+        const isLive = boardIndex === -1 || boardIndex === currentMoves.length;
+        
+        // Find the board state for the requested index
+        const boardToAnalyze = isLive ? board : boardHistory[boardIndex];
+        
+        // FEN generation needs the board array and the move list up to the target index
+        const movesUpToIndex = isLive ? currentMoves : currentMoves.slice(0, boardIndex);
+        
+        const serializedBoard = boardToAnalyze.map(row => 
+            row.map(cell => cell ? { piece: cell.piece, color: cell.color } : null)
+        );
+
+        const analyzeUrl = 'http://127.0.0.1:5000/api/analyze';
+
+        try {
+            const response = await fetch(analyzeUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    boardState: serializedBoard,
+                    moveHistory: movesUpToIndex
+                }),
+            });
+            
+            if (!response.ok) throw new Error('Analysis API failed');
+            
+            const data = await response.json();
+            setAnalysis(data.evaluation);
+            
+        } catch (error) {
+            setAnalysis('Analysis Error');
+            console.error('Failed to fetch analysis:', error);
+        }
+    }, [board, boardHistory]);
+
 
     // --- ELO HANDLER ---
     const handleEloChange = (e) => {
@@ -315,11 +362,19 @@ const ChessGame = () => {
         
         if (isNaN(value) || value < 600 || value > 3000) return;
         
-        // Enforce 100-point increment
         if (value % 100 === 0) {
             setEloSkill(value);
         }
     };
+    
+    // --- Move History Click Handler ---
+    const handleMoveClick = useCallback((index) => {
+        setReplayIndex(index);
+        
+        const targetMoveHistory = index === 0 ? [] : moveHistory.slice(0, index);
+        fetchAnalysis(moveHistory, index);
+    }, [moveHistory, boardHistory, fetchAnalysis]);
+
 
     // --- sendMoveHistory (Async API call to Flask) ---
     const sendMoveHistory = useCallback(async (history, isCheck = false, currentBoard, skill) => {
@@ -343,8 +398,9 @@ const ChessGame = () => {
             const data = await response.json();
             return data.geminiMove; 
         } catch (error) { 
-            console.error('Error sending move history to backend:', error); 
-            return null;
+            // FIX: If the backend fails for *any reason*, treat it as an AI failure to move.
+            console.error('Error sending move history to backend (Total Failure):', error); 
+            return null; // Returning null forces the retry loop to continue or terminate.
         }
     }, []); 
 
@@ -412,18 +468,23 @@ const ChessGame = () => {
             setLastMove({ start: {row: sr, col: sc}, end: {row: tr, col: tc}, san: finalSan });
             setTurn(nextTurn);
             
+            // --- Update Board History ---
+            setBoardHistory(prevHistory => [...prevHistory, newBoard]);
+            setReplayIndex(-1); // Return to live view
+            fetchAnalysis([...moveHistory, sanMove], -1); // Analyze the new live position
+            
             return newBoard; 
         });
 
         setMoveHistory(prevHistory => [...prevHistory, sanMove]);
         return true; // Return success
 
-    }, [gameStatus.isOver, eloSkill]);
+    }, [gameStatus.isOver, eloSkill, fetchAnalysis, moveHistory]);
 
 
     // --- handleSquareClick (Handles White's move and triggers Black's move) ---
     const handleSquareClick = useCallback(async (r, c) => { 
-        if (gameStatus.isOver || turn !== 'W') return; 
+        if (gameStatus.isOver || turn !== 'W' || replayIndex !== -1) return; // Prevent move during replay mode
         
         const piece = board[r][c];
 
@@ -440,8 +501,8 @@ const ChessGame = () => {
             // FIX: Check for illegal King capture *before* executing the move
             const targetPiece = board[r][c];
             if (targetPiece && targetPiece.piece === 'King' && targetPiece.color === 'B') {
-                setGameStatus({ isOver: true, result: 'White Wins (King Captured)' });
-                alert("Game Over! White Wins by illegal King capture.");
+                setGameStatus({ isOver: true, result: 'White Wins (Checkmate)' }); // Treat King capture as checkmate
+                alert("Game Over! White Wins by Checkmate.");
                 return;
             }
 
@@ -499,30 +560,33 @@ const ChessGame = () => {
                 // Update States for White's move
                 setBoard(newBoard);
                 setLastMove({ start: selectedSquare, end: { row: r, col: c }, san: sanNotation });
-                setMoveHistory(newMoveHistory); 
+                setMoveHistory(newMoveHistory);
+                
+                // --- Update Board History ---
+                setBoardHistory(prevHistory => [...prevHistory, newBoard]);
+                
                 setTurn(nextTurn);
                 setSelectedSquare(null);
                 setValidMoves([]);
                 
+                fetchAnalysis(newMoveHistory, -1); // Analyze the new live position
+                
                 // --- ASYNC AI CALL WITH RETRY LOOP (MAX_RETRIES = 10) ---
                 if (nextTurn === 'B' && !gameEndResult.isOver) {
-                    const MAX_RETRIES = 10; // Increased retry count
+                    const MAX_RETRIES = 10;
                     let moveExecuted = false;
                     
                     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
                         const currentSkill = isNaN(eloSkill) ? 1800 : eloSkill;
-                        
-                        console.log(`Requesting Gemini move (Attempt ${attempt + 1}/${MAX_RETRIES}) at ELO ${currentSkill}...`);
-                        
                         const geminiMoveSan = await sendMoveHistory(newMoveHistory, isNextKingInCheck, newBoard, currentSkill);
                         
                         if (geminiMoveSan) {
                             moveExecuted = executeGeminiMove(geminiMoveSan, newBoard);
                             if (moveExecuted) {
-                                console.log(`Gemini move ${geminiMoveSan} executed successfully.`);
-                                break; // Exit loop on success
+                                break; 
                             }
                         } else {
+                                // If backend fails to respond (null/error), we break immediately.
                             break;
                         }
                     }
@@ -530,19 +594,9 @@ const ChessGame = () => {
                     if (!moveExecuted) {
                         console.error(`AI failed to execute a legal move after ${MAX_RETRIES} attempts.`);
                         
-                        // Determine final game status when AI fails
-                        const finalCheck = checkGameEnd(newBoard, nextTurn);
-                        
-                        if (finalCheck.isOver) {
-                            // This is Checkmate/Stalemate
-                            setGameStatus(finalCheck);
-                            alert(`Game Over! ${finalCheck.result}`);
-                        } else {
-                            // If Black has legal moves but AI failed to find one (AI Bug / Invalid SAN):
-                            // Revert turn back to White
-                            setTurn('W'); 
-                            alert("AI failed to find a legal move. It's your turn again!");
-                        }
+                        // CRITICAL FIX: If AI failed all attempts, declare White the winner.
+                        setGameStatus({ isOver: true, result: 'White Wins (AI Failure / Checkmate)' });
+                        alert("Game Over! White wins by AI failure/Checkmate.");
                     }
                 }
                 
@@ -566,18 +620,21 @@ const ChessGame = () => {
                 setValidMoves(getValidMoves(board, r, c, turn));
             }
         }
-    }, [board, turn, selectedSquare, validMoves, moveHistory, sendMoveHistory, executeGeminiMove, gameStatus.isOver, eloSkill]);
+    }, [board, selectedSquare, validMoves, moveHistory, sendMoveHistory, executeGeminiMove, gameStatus.isOver, eloSkill, replayIndex, fetchAnalysis]);
 
     // --- Reset and Render Functions ---
     const handleReset = useCallback(() => {
-        const newInitialBoard = initialBoard.map(row => row.map(cell => cell ? { ...cell } : null));
+        const newInitialBoard = initialBoardState.map(row => row.map(cell => cell ? { ...cell } : null));
         setBoard(newInitialBoard);
+        setBoardHistory([newInitialBoard]); // Reset board history
+        setReplayIndex(-1);
         setTurn('W');
         setSelectedSquare(null);
         setValidMoves([]);
         setLastMove(null);
         setMoveHistory([]);
         setGameStatus({ isOver: false, result: 'Game On' });
+        setAnalysis('—');
         
         const currentSkill = isNaN(eloSkill) ? 1800 : eloSkill;
         sendMoveHistory([], false, newInitialBoard, currentSkill);
@@ -591,30 +648,35 @@ const ChessGame = () => {
     const gameStarted = moveHistory.length > 0;
     
     const Square = ({ piece, r, c }) => {
+        // Use the board corresponding to the replay index
+        const currentPiece = currentBoard[r][c];
         const isLight = (r + c) % 2 === 0;
         const isSelected = selectedSquare && selectedSquare.row === r && selectedSquare.col === c;
-        const isValid = validMoves.some(m => m.row === r && m.col === c);
-        const isKing = piece && piece.piece === 'King';
+        // Only show valid moves in live mode
+        const isValid = replayIndex === -1 && validMoves.some(m => m.row === r && m.col === c);
+        const isKing = currentPiece && currentPiece.piece === 'King';
+        // Check only applies to the live turn
+        const inCheckForSquare = replayIndex === -1 && inCheck;
 
         const squareClass = [
             'square',
             isLight ? 'light' : 'dark',
             isSelected ? 'selected' : '',
             isValid ? 'valid-move' : '',
-            isKing && inCheck && piece.color === turn ? 'king-in-check' : '',
+            isKing && inCheckForSquare && currentPiece.color === turn ? 'king-in-check' : '',
         ].filter(Boolean).join(' ');
 
-        const pieceClass = piece 
-            ? ['piece-symbol', piece.color === 'W' ? 'piece-W' : 'piece-B'].join(' ')
+        const pieceClass = currentPiece 
+            ? ['piece-symbol', currentPiece.color === 'W' ? 'piece-W' : 'piece-B'].join(' ')
             : '';
 
         return (
             <div className={squareClass} onClick={() => handleSquareClick(r, c)}>
-                {piece ? (
+                {currentPiece ? (
                     <span className={pieceClass}>
-                        {pieceSymbols[piece.piece][piece.color]}
+                        {pieceSymbols[currentPiece.piece][currentPiece.color]}
                     </span>
-                ) : isValid && !piece ? (
+                ) : isValid && !currentPiece ? (
                     <div className="valid-move-dot"></div>
                 ) : null}
             </div>
@@ -623,29 +685,71 @@ const ChessGame = () => {
     
     const renderRanks = () => { return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{8 - i}</div>)); };
     const renderFiles = () => { return Array.from({ length: 8 }).map((_, i) => (<div key={i} className="coordinate">{String.fromCharCode(65 + i)}</div>)); };
+    
     const renderMoveHistory = () => {
         const moves = [];
+        // Add move 0 (initial position)
+        moves.push(
+            <div 
+                key={0} 
+                className={`history-item history-start ${replayIndex === 0 ? 'selected-move' : ''}`}
+                onClick={() => handleMoveClick(0)}
+            >
+                <span>Start</span>
+            </div>
+        );
+        
         for (let i = 0; i < moveHistory.length; i += 2) {
             const moveNumber = Math.floor(i / 2) + 1;
             const whiteMove = moveHistory[i];
             const blackMove = moveHistory[i + 1] || '...';
+            
+            // White's move
             moves.push(
-                <div key={i} className="history-item">
+                <div 
+                    key={`w-${i + 1}`} // Use unique key
+                    className={`history-move-wrapper ${replayIndex === i + 1 ? 'selected-move' : ''}`}
+                    onClick={() => handleMoveClick(i + 1)}
+                >
                     <span>{moveNumber}.</span>
                     <span className="history-move">{whiteMove}</span>
-                    <span className="history-move">{blackMove}</span>
                 </div>
             );
+            
+            // Black's move
+            if (moveHistory[i + 1]) {
+                moves.push(
+                    <div 
+                        key={`b-${i + 2}`} // Use unique key
+                        className={`history-move-wrapper ${replayIndex === i + 2 ? 'selected-move' : ''}`}
+                        onClick={() => handleMoveClick(i + 2)}
+                    >
+                        <span className="history-move">{blackMove}</span>
+                    </div>
+                );
+            }
         }
         return moves;
     };
 
     return (
         <div className="container">
-            <h1 className="game-title">Pure React Chess ♟️</h1>
+            <h1 className="game-title">♟️ Gemini Chess ♟️</h1>
+
+            <div className="analysis-bar">
+                <span className="evaluation-label">🗡️ Evaluation:</span>
+                <span className={`evaluation-score ${analysis.includes('+') ? 'white-advantage' : analysis.includes('-') ? 'black-advantage' : analysis.includes('Wins') ? 'game-end' : ''}`}>
+                    {analysis}
+                </span>
+                {replayIndex !== -1 && (
+                    <button onClick={() => handleMoveClick(moveHistory.length)} className="live-button">
+                        Return to Live
+                    </button>
+                )}
+            </div>
 
             <div className="settings-panel">
-                <label htmlFor="elo-input">Set Opponent ELO (600-3000, increments of 100):</label>
+                <label htmlFor="elo-input">🗡️ Set Opponent ELO (600-3000, increments of 100):</label>
                 <input
                     id="elo-input"
                     type="number"
@@ -677,7 +781,7 @@ const ChessGame = () => {
                         {renderRanks()}
                     </div>
                     <div className="board-grid">
-                        {board.flatMap((row, r) =>
+                        {currentBoard.flatMap((row, r) => // Use currentBoard (live or replay)
                             row.map((piece, c) => (
                                 <Square key={`${r}-${c}`} piece={piece} r={r} c={c} />
                             ))
@@ -689,7 +793,7 @@ const ChessGame = () => {
                 </div>
                 
                 <div className="history-panel">
-                    <h2 className="history-title">Move History</h2>
+                    <h2 className="history-title">⚔️ Move History ⚔️</h2>
                     <div className="history-list">
                         {renderMoveHistory()}
                     </div>
