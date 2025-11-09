@@ -371,7 +371,7 @@ const ChessGame = () => {
     const handleMoveClick = useCallback((index) => {
         setReplayIndex(index);
         
-        const targetMoveHistory = index === 0 ? [] : moveHistory.slice(0, index);
+        // Pass the full move history to fetchAnalysis, letting it slice if needed.
         fetchAnalysis(moveHistory, index);
     }, [moveHistory, boardHistory, fetchAnalysis]);
 
@@ -663,6 +663,7 @@ const ChessGame = () => {
             isLight ? 'light' : 'dark',
             isSelected ? 'selected' : '',
             isValid ? 'valid-move' : '',
+            // 🐛 NEW CLASS ADDITION: Add 'king-in-check' class
             isKing && inCheckForSquare && currentPiece.color === turn ? 'king-in-check' : '',
         ].filter(Boolean).join(' ');
 
@@ -692,7 +693,8 @@ const ChessGame = () => {
         moves.push(
             <div 
                 key={0} 
-                className={`history-item history-start ${replayIndex === 0 ? 'selected-move' : ''}`}
+                // 🐛 NEW CLASS ADDITION: Use 'history-start' class
+                className={`history-start ${replayIndex === 0 ? 'selected-move' : ''}`}
                 onClick={() => handleMoveClick(0)}
             >
                 <span>Start</span>
@@ -708,6 +710,7 @@ const ChessGame = () => {
             moves.push(
                 <div 
                     key={`w-${i + 1}`} // Use unique key
+                    // 🐛 NEW CLASS ADDITION: Use 'history-move-wrapper' class
                     className={`history-move-wrapper ${replayIndex === i + 1 ? 'selected-move' : ''}`}
                     onClick={() => handleMoveClick(i + 1)}
                 >
@@ -721,9 +724,12 @@ const ChessGame = () => {
                 moves.push(
                     <div 
                         key={`b-${i + 2}`} // Use unique key
+                        // 🐛 NEW CLASS ADDITION: Use 'history-move-wrapper' class
                         className={`history-move-wrapper ${replayIndex === i + 2 ? 'selected-move' : ''}`}
                         onClick={() => handleMoveClick(i + 2)}
                     >
+                        {/* We hide the move number for Black's move in this structure, letting the CSS handle spacing */}
+                        <span style={{opacity: 0}}>{moveNumber}.</span> 
                         <span className="history-move">{blackMove}</span>
                     </div>
                 );

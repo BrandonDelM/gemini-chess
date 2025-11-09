@@ -1,23 +1,39 @@
 /* Variables for easy color changes */
 :root {
-    --color-background: #1e1e1e;
-    --color-panel-bg: #2c2c2c;
-    --color-border: #444;
-    --color-light-square: #e9ecef; /* Very light gray */
-    --color-dark-square: #495057;  /* Medium dark gray */
+    /* Base Colors */
+    --color-background: #121212; /* Deep dark background */
+    --color-panel-bg: #1e1e1e;   /* Slightly lighter dark for panels */
+    --color-border: #333;        /* Subtle border color */
+    
+    /* Board Squares */
+    --color-light-square: #e0e0e0; /* Off-white / light gray */
+    --color-dark-square: #4a4a4a;  /* Dark gray */
+    
+    /* Text */
     --color-text-dark: #1a1a1a;
     --color-text-light: #f0f0f0;
-    --color-highlight-selected: #ffc107; /* Gold */
-    --color-highlight-valid: #4CAF50;    /* Green */
-    --color-turn-white: #f8f9fa;
-    --color-turn-black: #495057;
-    --color-reset-button: #dc3545;
+    --color-coordinates: #888;
+    
+    /* Highlights & Status */
+    --color-highlight-selected: #f7b731; /* Vibrant Gold/Orange for selection */
+    --color-highlight-valid: #1a8b3d;    /* Deep Green for valid moves */
+    --color-highlight-valid-dot: rgba(0, 0, 0, 0.4); /* Darker dot for contrast */
+    --color-highlight-selected-light: #ffeb99; /* Lighter selected square */
+    --color-highlight-selected-dark: #b8860b;  /* Darker selected square */
+    --color-king-in-check: #ff4757; /* Red for King in check */
+    
+    /* Status & Utility */
+    --color-turn-white: #e0e0e0;
+    --color-turn-black: #4a4a4a;
+    --color-reset-button: #e74c3c; /* Flat red */
+    --color-status-move: #90a4ae;
+    --color-history-bg: #282828; /* Slightly different panel for history */
 }
 
 body {
     background-color: var(--color-background);
     color: var(--color-text-light);
-    font-family: Arial, sans-serif;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     padding: 20px;
 }
 
@@ -29,11 +45,11 @@ body {
 }
 
 .game-title {
-    font-size: 2.5em;
-    font-weight: bold;
-    margin-bottom: 20px;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-    letter-spacing: 1px;
+    font-size: 3em; /* Slightly larger */
+    font-weight: 700;
+    margin-bottom: 25px;
+    text-shadow: 0 4px 6px rgba(0, 0, 0, 0.7);
+    letter-spacing: 2px;
 }
 
 /* Status Panel */
@@ -42,51 +58,51 @@ body {
     justify-content: space-between;
     width: 100%;
     max-width: 600px;
-    margin-bottom: 20px;
-    padding: 10px 15px;
+    margin-bottom: 25px;
+    padding: 12px 20px;
     background-color: var(--color-panel-bg);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    gap: 15px;
+    border-radius: 10px;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.5); /* Stronger shadow */
+    gap: 20px;
 }
 
 .status-item {
     font-size: 1em;
     font-weight: 600;
-    padding: 5px 10px;
-    border-radius: 4px;
+    padding: 6px 12px;
+    border-radius: 6px;
     text-align: center;
     flex-grow: 1;
+    transition: background-color 0.3s;
 }
 
 .turn-W {
     color: var(--color-text-dark);
     background-color: var(--color-turn-white);
     border: 1px solid var(--color-light-square);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .turn-B {
     color: var(--color-text-light);
     background-color: var(--color-turn-black);
     border: 1px solid var(--color-border);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
 .move-display {
-    color: var(--color-light-square);
-    font-weight: normal;
-    font-size: 0.9em;
+    color: var(--color-status-move);
+    font-weight: 500;
+    font-size: 0.95em;
     background-color: #343a40;
+    flex-shrink: 0;
 }
 
 /* Game Layout (Board and History) */
 .game-area {
     display: flex;
     gap: 30px;
-    width: min(90vw, 1000px);
-    max-width: 1000px;
+    width: min(95vw, 1100px);
+    max-width: 1100px;
     flex-direction: row;
     align-items: flex-start;
     flex-wrap: wrap;
@@ -103,8 +119,8 @@ body {
     width: 90vw;
     height: 90vw;
     margin: 0 auto;
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 0, 0, 0.8);
-    border-radius: 8px;
+    box-shadow: 0 12px 25px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0, 0, 0, 0.9);
+    border-radius: 12px;
     overflow: hidden;
     flex-shrink: 0; 
 }
@@ -115,7 +131,7 @@ body {
     display: grid;
     grid-template-columns: repeat(8, 1fr);
     grid-template-rows: repeat(8, 1fr);
-    border: 1px solid var(--color-border);
+    border: none; /* Removed internal border */
 }
 
 /* Coordinates */
@@ -123,15 +139,16 @@ body {
     display: flex;
     justify-content: space-around;
     align-items: center;
-    color: #888;
-    font-size: 0.8em;
+    color: var(--color-coordinates);
+    font-size: 0.85em;
+    font-weight: 500;
 }
 
 .ranks {
     grid-column: 1 / 2;
     grid-row: 1 / 2;
     flex-direction: column;
-    padding: 0 4px;
+    padding: 0 5px;
     justify-content: space-around;
 }
 
@@ -139,7 +156,7 @@ body {
     grid-column: 2 / 3;
     grid-row: 2 / 3;
     flex-direction: row;
-    padding: 4px 0;
+    padding: 5px 0;
 }
 
 .coordinate {
@@ -155,10 +172,10 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: min(5vw, 40px);
+    font-size: min(5vw, 45px); /* Slightly larger piece symbols */
     cursor: pointer;
     user-select: none;
-    transition: background-color 0.1s ease, box-shadow 0.1s ease;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
     position: relative;
 }
 
@@ -172,112 +189,239 @@ body {
 
 .piece-symbol {
     font-weight: bold;
-    font-size: 1.2em; 
+    font-size: 1.1em; /* Adjusted size relative to square font-size */
     line-height: 1;
 }
 
+/* 🌟 FIX: Swapped colors for White and Black pieces 🌟 */
 .piece-W {
-    color: var(--color-text-light);
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+    color: var(--color-text-light); /* White pieces (light color) now use light text */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .piece-B {
-    color: var(--color-text-dark);
+    color: var(--color-text-dark); /* Black pieces (dark color) now use dark text */
     text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.5);
 }
 
 /* Highlights */
 .square.selected {
+    /* Use a clear inset box-shadow */
     box-shadow: inset 0 0 0 4px var(--color-highlight-selected); 
 }
 
 .square.light.selected {
-    background-color: #ffe5a8;
+    /* Slightly different background to enhance selection */
+    background-color: var(--color-highlight-selected-light); 
 }
 
 .square.dark.selected {
-    background-color: #cc9a00;
+    background-color: var(--color-highlight-selected-dark);
 }
 
 .square.valid-move {
-    background-color: var(--color-highlight-valid); 
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
-    border: 2px solid #2e7d32;
+    /* More subtle visual change on background but strong border */
+    box-shadow: inset 0 0 0 4px var(--color-highlight-valid);
 }
 
 .valid-move-dot {
     position: absolute;
-    width: 20%;
-    height: 20%;
+    width: 25%; /* Slightly larger dot */
+    height: 25%;
     border-radius: 50%;
-    background-color: rgba(0, 0, 0, 0.2);
+    background-color: var(--color-highlight-valid-dot);
 }
+
+/* New: King in Check Style */
+.square.king-in-check {
+    background-color: var(--color-king-in-check) !important;
+    animation: pulse-check 1.5s infinite alternate;
+}
+
+@keyframes pulse-check {
+    from { box-shadow: 0 0 0 0px var(--color-king-in-check); }
+    to { box-shadow: 0 0 0 5px rgba(255, 71, 87, 0.5); }
+}
+
 
 /* Reset Button */
 .reset-button {
-    margin-top: 20px;
-    padding: 10px 20px;
-    font-size: 1em;
+    margin-top: 30px;
+    padding: 12px 25px;
+    font-size: 1.1em;
     cursor: pointer;
     background-color: var(--color-reset-button);
     color: white;
     border: none;
-    border-radius: 5px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    border-radius: 6px;
+    box-shadow: 0 5px 10px rgba(0, 0, 0, 0.4);
     transition: background-color 0.2s, transform 0.1s;
 }
 
 .reset-button:hover {
-    background-color: #b02a37;
-    transform: translateY(-1px);
+    background-color: #c0392b;
+    transform: translateY(-2px);
+    box-shadow: 0 7px 15px rgba(0, 0, 0, 0.5);
 }
 
-/* History Panel */
+/* --- History Panel (Refined) --- */
 .history-panel {
     width: 100%;
-    max-width: 300px;
-    background-color: var(--color-panel-bg);
+    max-width: 350px; /* Wider panel for better move display */
+    background-color: var(--color-history-bg);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 10px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.5);
     min-height: 400px;
     flex-grow: 1; 
-    /* Adjust margin for mobile wrap */
     margin-top: 0; 
 }
 
 .history-title {
-    font-size: 1.2em;
+    font-size: 1.3em;
     font-weight: bold;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 5px;
-    margin-bottom: 10px;
+    border-bottom: 2px solid var(--color-border);
+    padding-bottom: 8px;
+    margin-bottom: 15px;
     text-align: center;
+    color: var(--color-text-light);
 }
 
 .history-list {
     max-height: 360px; 
     overflow-y: auto;
-    padding-right: 5px;
+    padding-right: 10px; /* Space for scrollbar */
 }
 
-.history-item {
+/* Styling the scrollbar for dark mode (Webkit) */
+.history-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+    background-color: #555;
+    border-radius: 4px;
+}
+
+.history-list::-webkit-scrollbar-track {
+    background-color: #333;
+}
+
+.history-start,
+.history-move-wrapper {
     display: flex;
-    justify-content: space-between;
-    padding: 5px 8px;
-    font-size: 0.9em;
+    padding: 6px 10px;
+    font-size: 0.95em;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s, color 0.2s;
+    margin-bottom: 4px;
+}
+
+.history-start {
+    justify-content: center;
+    font-style: italic;
+    color: var(--color-coordinates);
     border-bottom: 1px dotted var(--color-border);
 }
 
-.history-item span:first-child {
-    color: #888;
+.history-move-wrapper {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 15px;
+}
+
+.history-move-wrapper:hover,
+.history-start:hover {
+    background-color: #383838;
+}
+
+.history-move-wrapper span:first-child {
+    color: var(--color-coordinates);
+    font-weight: 500;
+    flex-basis: 30px; /* Fixed width for move number */
 }
 
 .history-move {
     font-family: monospace;
     font-weight: bold;
     color: var(--color-light-square);
+    flex-grow: 1;
+}
+
+/* Selected Move Highlight */
+.selected-move {
+    background-color: #4a69bd !important; /* Blue highlight for replay */
+    color: white !important;
+}
+
+.selected-move span:first-child {
+    color: #e0e0e0 !important;
+}
+
+.selected-move .history-move {
+    color: #f0f0f0 !important;
+}
+
+/* Status Bar/ELO Input Styles */
+.analysis-bar, .settings-panel {
+    width: 100%;
+    max-width: 600px;
+    padding: 10px 15px;
+    background-color: var(--color-panel-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.evaluation-label {
+    font-weight: 600;
+    color: #7f8c8d;
+}
+
+.evaluation-score {
+    font-size: 1.1em;
+    font-weight: bold;
+    flex-grow: 1;
+    text-align: left;
+}
+
+.white-advantage { color: #5cb85c; } /* Green */
+.black-advantage { color: #e74c3c; } /* Red */
+.game-end { color: var(--color-highlight-selected); }
+
+.live-button {
+    padding: 5px 10px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.live-button:hover {
+    background-color: #2980b9;
+}
+
+#elo-input {
+    padding: 5px 10px;
+    border: 1px solid var(--color-border);
+    background-color: #3a3a3a;
+    color: var(--color-text-light);
+    border-radius: 4px;
+    width: 150px;
+    text-align: center;
+}
+
+#elo-input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 /* Mobile Adjustments */
@@ -290,11 +434,26 @@ body {
     .board-wrapper {
         width: 100%;
         height: 100vw;
-        max-width: 450px;
-        max-height: 450px;
+        max-width: 400px; /* Slightly smaller max size for portrait mobile */
+        max-height: 400px;
     }
     .history-panel {
-        max-width: 450px;
+        max-width: 400px;
+        min-height: 300px;
         margin-top: 0;
+    }
+    .status-panel, .analysis-bar, .settings-panel {
+        max-width: 400px;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .status-panel {
+        padding: 10px;
+    }
+    .move-display, .status-item {
+        width: 100%;
+    }
+    .evaluation-score {
+        text-align: center;
     }
 }
